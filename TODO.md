@@ -78,10 +78,10 @@
   - [x] `GREEN`: Implement dish persistence and fractional allocation calculation in `src/batch_allocator.py`.
   - [x] `REFACTOR`: Optimize atomic transaction blocks writing simultaneously to `dishes` and `meal_logs`.
 
-- [ ] **Task 5.2: Atomic Multi-Profile Journal Logging**
-  - [ ] `RED`: Author tests in `tests/test_batch_allocator.py` verifying atomic rollback if any individual profile ledger insertion fails during a split.
-  - [ ] `GREEN`: Implement transactional commit handling in `src/batch_allocator.py`.
-  - [ ] `REFACTOR`: Clean up relational queries and index utilization.
+- [x] **Task 5.2: Atomic Multi-Profile Journal Logging**
+  - [x] `RED`: Author tests in `tests/test_batch_allocator.py` verifying atomic rollback if any individual profile ledger insertion fails during a split.
+  - [x] `GREEN`: Implement transactional commit handling in `src/batch_allocator.py`.
+  - [x] `REFACTOR`: Clean up relational queries and index utilization.
 
 ---
 

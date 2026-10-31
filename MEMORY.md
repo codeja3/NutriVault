@@ -42,7 +42,7 @@
 ## 3. Current Phase Status
 
 * **Active Phase:** Phase 3 (Neuro-Symbolic Nutritional Grounding).
-* **Active Phase:** Phase 5 (Family Batch Portion Allocator).
+* **Active Phase:** Phase 6 (Tabular Analytics Layer).
 * **Completed Tasks:**
   * Task 1.1: Virtual environment initialized with `uv`, `pyproject.toml` created with strict Python 3.11+ configuration, `pytest`, `pytest-mock`, `pytest-asyncio`, and `ruff` installed, `src/__init__.py` exposing version 1.0.0.
   * Task 1.2: Hardware probing implemented in `src/hardware.py` (`HardwareProfile`, `AcceleratorType`, OS, RAM, Apple Silicon, CUDA, and CPU fallback detection) with 100% offline unit test coverage in `tests/test_hardware.py`.
@@ -55,4 +55,5 @@
   * Task 4.1: Volatile memory stream manager and zero-disk purge lifecycle implemented in `src/vision_pipeline.py` (`EphemeralImageBuffer`, `ImagePayloadTooLargeError`, bounded 15MB ram ceiling) with 100% offline unit test coverage in `tests/test_vision_pipeline.py`.
   * Task 4.2: Inference client and strict JSON output parsing implemented in `src/vision_pipeline.py` (`VLMClient`, `ExtractedCandidateItem`, `clean_vlm_json_output`, `VLMInvalidJSONError`, `VLMUnavailableError`, 1-retry handling) with 100% offline unit test coverage in `tests/test_vision_pipeline.py`.
   * Task 5.1: Batch dish ledger and fractional portion validation implemented in `src/batch_allocator.py` (`BatchDish`, `DishIngredient`, `ProfilePortionAllocation`, `BatchDishAllocator`, `InvalidPortionSumError` with `ERR_INVALID_PORTION_SUM`) with 100% offline unit test coverage in `tests/test_batch_allocator.py`.
-* **Next Task:** Task 5.2: Atomic Multi-Profile Journal Logging (`tests/test_batch_allocator.py` and `src/batch_allocator.py`).
+  * Task 5.2: Atomic multi-profile journal logging with full transaction rollback protection implemented in `src/batch_allocator.py` (`commit_batch_allocations`) with 100% offline unit test coverage in `tests/test_batch_allocator.py`.
+* **Next Task:** Task 6.1: Windowed Moving Averages (7-Day Rolling EMA) (`tests/test_analytics.py` and `src/analytics.py`).

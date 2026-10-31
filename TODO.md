@@ -87,10 +87,10 @@
 
 ## Phase 6: Tabular Analytics Layer
 
-- [ ] **Task 6.1: Windowed Moving Averages (7-Day Rolling EMA)**
-  - [ ] `RED`: Author tests in `tests/test_analytics.py` asserting correct calculation of 7-day rolling calories, macros, and delta against active targets using historical fixtures.
-  - [ ] `GREEN`: Implement windowed SQL / analytical queries in `src/analytics.py`.
-  - [ ] `REFACTOR`: Ensure query plan uses `idx_meal_logs_profile_time` effectively.
+- [x] **Task 6.1: Windowed Moving Averages (7-Day Rolling EMA)**
+  - [x] `RED`: Author tests in `tests/test_analytics.py` asserting correct calculation of 7-day rolling calories, macros, and delta against active targets using historical fixtures.
+  - [x] `GREEN`: Implement windowed SQL / analytical queries in `src/analytics.py`.
+  - [x] `REFACTOR`: Ensure query plan uses `idx_meal_logs_profile_time` effectively.
 
 - [ ] **Task 6.2: Temporal Eating Window Calculation**
   - [ ] `RED`: Author tests in `tests/test_analytics.py` asserting calculation of daily feeding intervals ($\Delta t = \text{Timestamp}_{\text{last}} - \text{Timestamp}_{\text{first}}$) and overnight fasts.

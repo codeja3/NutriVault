@@ -56,4 +56,5 @@
   * Task 4.2: Inference client and strict JSON output parsing implemented in `src/vision_pipeline.py` (`VLMClient`, `ExtractedCandidateItem`, `clean_vlm_json_output`, `VLMInvalidJSONError`, `VLMUnavailableError`, 1-retry handling) with 100% offline unit test coverage in `tests/test_vision_pipeline.py`.
   * Task 5.1: Batch dish ledger and fractional portion validation implemented in `src/batch_allocator.py` (`BatchDish`, `DishIngredient`, `ProfilePortionAllocation`, `BatchDishAllocator`, `InvalidPortionSumError` with `ERR_INVALID_PORTION_SUM`) with 100% offline unit test coverage in `tests/test_batch_allocator.py`.
   * Task 5.2: Atomic multi-profile journal logging with full transaction rollback protection implemented in `src/batch_allocator.py` (`commit_batch_allocations`) with 100% offline unit test coverage in `tests/test_batch_allocator.py`.
-* **Next Task:** Task 6.1: Windowed Moving Averages (7-Day Rolling EMA) (`tests/test_analytics.py` and `src/analytics.py`).
+  * Task 6.1: Windowed moving averages and target adherence deltas implemented in `src/analytics.py` (`RollingEMAResult`, `AnalyticsEngine.calculate_rolling_ema`) with 100% offline unit test coverage in `tests/test_analytics.py`.
+* **Next Task:** Task 6.2: Temporal Eating Window Calculation (`tests/test_analytics.py` and `src/analytics.py`).

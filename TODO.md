@@ -101,10 +101,10 @@
 
 ## Phase 7: Local HTTP / REST API Layer
 
-- [ ] **Task 7.1: Core REST Endpoints (Hardware, Profiles, Targets, Advisory)**
-  - [ ] `RED`: Author offline contract tests in `tests/test_api.py` asserting status codes, payloads, and error codes (`ERR_HARDWARE_TIER_EXCEEDED`, `ERR_CLINICAL_AI_RESTRICTED`) for `/api/v1/hardware`, `/api/v1/profiles`, `/api/v1/profiles/{id}/targets`, and `/api/v1/advisory/fitness-targets`.
-  - [ ] `GREEN`: Implement REST request router and handlers in `src/api.py`.
-  - [ ] `REFACTOR`: Standardize JSON serialization and domain exception-to-HTTP status mapping.
+- [x] **Task 7.1: Core REST Endpoints (Hardware, Profiles, Targets, Advisory)**
+  - [x] `RED`: Author offline contract tests in `tests/test_api.py` asserting status codes, payloads, and error codes (`ERR_HARDWARE_TIER_EXCEEDED`, `ERR_CLINICAL_AI_RESTRICTED`) for `/api/v1/hardware`, `/api/v1/profiles`, `/api/v1/profiles/{id}/targets`, and `/api/v1/advisory/fitness-targets`.
+  - [x] `GREEN`: Implement REST request router and handlers in `src/api.py`.
+  - [x] `REFACTOR`: Standardize JSON serialization and domain exception-to-HTTP status mapping.
 
 - [ ] **Task 7.2: Vision Ingestion, Batch Commit & Analytics Endpoints**
   - [ ] `RED`: Author offline contract tests in `tests/test_api.py` asserting zero-disk multipart parsing on `/api/v1/meals/parse-image`, fractional batch commits on `/api/v1/meals/commit` (`ERR_INVALID_PORTION_SUM`), and 7-day EMA + eating window responses on `/api/v1/analytics/rolling`.

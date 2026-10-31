@@ -1,0 +1,290 @@
+import sqlite3
+
+import pytest
+
+from src.db import (
+    ProfileRepository,
+    init_db,
+)
+
+
+def test_init_db_pragmas_and_tables():
+    """Verify in-memory SQLite executes schemas, sets WAL/memory pragmas, and foreign keys."""
+    conn = sqlite3.connect(":memory:")
+    init_db(conn)
+
+    # Check foreign keys pragma is active
+    cursor = conn.cursor()
+    fk_status = cursor.execute("PRAGMA foreign_keys;").fetchone()[0]
+    assert fk_status == 1
+
+    # Check all required tables exist
+    tables = {
+        row[0]
+        for row in cursor.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()
+    }
+    assert "profiles" in tables
+    assert "target_envelopes" in tables
+    assert "dishes" in tables
+    assert "meal_logs" in tables
+    assert "usda_foods" in tables
+
+    # Check indices exist
+    indices = {
+        row[0]
+        for row in cursor.execute("SELECT name FROM sqlite_master WHERE type='index';").fetchall()
+    }
+    assert "idx_single_active_envelope" in indices
+    assert "idx_meal_logs_profile_time" in indices
+    assert "idx_target_envelopes_profile" in indices
+    assert "idx_usda_foods_description" in indices
+
+
+def test_profile_type_check_constraint():
+    """Assert profiles table rejects invalid profile_type strings."""
+    conn = sqlite3.connect(":memory:")
+    init_db(conn)
+    cursor = conn.cursor()
+
+    # Valid profile types: standard, athletic, chronic_condition
+    cursor.execute(
+        "INSERT INTO profiles (id, name, profile_type) VALUES (?, ?, ?);",
+        ("p1", "Alice", "standard"),
+    )
+    cursor.execute(
+        "INSERT INTO profiles (id, name, profile_type) VALUES (?, ?, ?);",
+        ("p2", "Bob", "athletic"),
+    )
+    cursor.execute(
+        "INSERT INTO profiles (id, name, profile_type) VALUES (?, ?, ?);",
+        ("p3", "Charlie", "chronic_condition"),
+    )
+    conn.commit()
+
+    # Invalid profile type must fail check constraint
+    with pytest.raises(sqlite3.IntegrityError):
+        cursor.execute(
+            "INSERT INTO profiles (id, name, profile_type) VALUES (?, ?, ?);",
+            ("p4", "Dave", "unsupported_type"),
+        )
+        conn.commit()
+
+
+def test_foreign_key_and_cascade_delete():
+    """Assert ON DELETE CASCADE deletes target_envelopes and meal_logs when profile is deleted."""
+    conn = sqlite3.connect(":memory:")
+    init_db(conn)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "INSERT INTO profiles (id, name, profile_type) VALUES (?, ?, ?);",
+        ("p1", "Alice", "standard"),
+    )
+    cursor.execute(
+        """
+        INSERT INTO target_envelopes (
+            id, profile_id, calories_target, protein_g_target,
+            carbs_g_target, fat_g_target, fiber_g_target
+        ) VALUES (?, ?, ?, ?, ?, ?, ?);
+        """,
+        ("env1", "p1", 2000, 150.0, 200.0, 65.0, 30.0),
+    )
+    cursor.execute(
+        """
+        INSERT INTO meal_logs (
+            id, profile_id, meal_type, portion_fraction,
+            calories, protein_g, carbs_g, fat_g, fiber_g
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """,
+        ("m1", "p1", "lunch", 1.0, 600.0, 45.0, 60.0, 20.0, 8.0),
+    )
+    conn.commit()
+
+    # Delete profile
+    cursor.execute("DELETE FROM profiles WHERE id = ?;", ("p1",))
+    conn.commit()
+
+    # Verified cascading deletion
+    env_count = cursor.execute(
+        "SELECT COUNT(*) FROM target_envelopes WHERE profile_id = 'p1';"
+    ).fetchone()[0]
+    meal_count = cursor.execute(
+        "SELECT COUNT(*) FROM meal_logs WHERE profile_id = 'p1';"
+    ).fetchone()[0]
+    assert env_count == 0
+    assert meal_count == 0
+
+
+def test_single_active_target_envelope_invariant():
+    """Verify that multiple active envelopes trigger unique violation."""
+    conn = sqlite3.connect(":memory:")
+    init_db(conn)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "INSERT INTO profiles (id, name, profile_type) VALUES (?, ?, ?);",
+        ("p1", "Alice", "standard"),
+    )
+    cursor.execute(
+        """
+        INSERT INTO target_envelopes (
+            id, profile_id, calories_target, protein_g_target,
+            carbs_g_target, fat_g_target, fiber_g_target, is_active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1);
+        """,
+        ("env1", "p1", 2000, 150.0, 200.0, 65.0, 30.0),
+    )
+    conn.commit()
+
+    # Inactive envelopes (is_active = 0) are allowed multiple times
+    cursor.execute(
+        """
+        INSERT INTO target_envelopes (
+            id, profile_id, calories_target, protein_g_target,
+            carbs_g_target, fat_g_target, fiber_g_target, is_active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0);
+        """,
+        ("env2", "p1", 1800, 140.0, 180.0, 60.0, 25.0),
+    )
+    conn.commit()
+
+    # Second active envelope (is_active = 1) for the same profile MUST fail
+    with pytest.raises(sqlite3.IntegrityError):
+        cursor.execute(
+            """
+            INSERT INTO target_envelopes (
+                id, profile_id, calories_target, protein_g_target,
+                carbs_g_target, fat_g_target, fiber_g_target, is_active
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1);
+            """,
+            ("env3", "p1", 2200, 160.0, 220.0, 70.0, 35.0),
+        )
+        conn.commit()
+
+
+def test_portion_fraction_check_constraint():
+    """Assert meal_logs enforces 0.0 < portion_fraction <= 1.0."""
+    conn = sqlite3.connect(":memory:")
+    init_db(conn)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "INSERT INTO profiles (id, name, profile_type) VALUES (?, ?, ?);",
+        ("p1", "Alice", "standard"),
+    )
+
+    # portion_fraction <= 0.0 must fail
+    with pytest.raises(sqlite3.IntegrityError):
+        cursor.execute(
+            """
+            INSERT INTO meal_logs (
+                id, profile_id, meal_type, portion_fraction,
+                calories, protein_g, carbs_g, fat_g, fiber_g
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            ("m_invalid", "p1", "lunch", 0.0, 500.0, 30.0, 50.0, 15.0, 5.0),
+        )
+        conn.commit()
+
+    # portion_fraction > 1.0 must fail
+    with pytest.raises(sqlite3.IntegrityError):
+        cursor.execute(
+            """
+            INSERT INTO meal_logs (
+                id, profile_id, meal_type, portion_fraction,
+                calories, protein_g, carbs_g, fat_g, fiber_g
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            ("m_invalid2", "p1", "lunch", 1.05, 500.0, 30.0, 50.0, 15.0, 5.0),
+        )
+        conn.commit()
+
+
+def test_profile_repository_crud():
+    """Verify ProfileRepository create, read, update, list, and delete operations."""
+    conn = sqlite3.connect(":memory:")
+    init_db(conn)
+    repo = ProfileRepository(conn)
+
+    # 1. Create Profile
+    p1 = repo.create_profile(
+        name="Alex Mercer",
+        birth_date="1990-05-15",
+        profile_type="athletic",
+        condition_notes="Marathon training",
+    )
+    assert p1.id is not None
+    assert p1.name == "Alex Mercer"
+    assert p1.profile_type == "athletic"
+
+    # 2. Get Profile by ID
+    fetched = repo.get_profile(p1.id)
+    assert fetched is not None
+    assert fetched.name == "Alex Mercer"
+    assert fetched.condition_notes == "Marathon training"
+
+    # 3. List Profiles
+    p2 = repo.create_profile(name="Sarah Mercer", profile_type="standard")
+    profiles = repo.list_profiles()
+    assert len(profiles) == 2
+    assert {p.name for p in profiles} == {"Alex Mercer", "Sarah Mercer"}
+
+    # 4. Update Profile
+    updated = repo.update_profile(p1.id, name="Alex Mercer-Vance", condition_notes="Ultra marathon")
+    assert updated.name == "Alex Mercer-Vance"
+    assert updated.condition_notes == "Ultra marathon"
+
+    # 5. Delete Profile
+    repo.delete_profile(p2.id)
+    assert repo.get_profile(p2.id) is None
+    assert len(repo.list_profiles()) == 1
+
+
+def test_target_envelope_crud_and_atomic_switch():
+    """Verify target envelope creation, query active, and atomic deactivation upon replacement."""
+    conn = sqlite3.connect(":memory:")
+    init_db(conn)
+    repo = ProfileRepository(conn)
+
+    profile = repo.create_profile(name="Jordan", profile_type="standard")
+
+    # 1. Create first active target envelope
+    env1 = repo.set_active_target_envelope(
+        profile_id=profile.id,
+        calories_target=2200,
+        protein_g_target=160.0,
+        carbs_g_target=240.0,
+        fat_g_target=70.0,
+        fiber_g_target=35.0,
+        micronutrients={"iron_mg": 18.0, "calcium_mg": 1000.0},
+    )
+    assert env1.is_active is True
+    assert env1.calories_target == 2200
+    assert env1.micronutrients == {"iron_mg": 18.0, "calcium_mg": 1000.0}
+
+    # Verify active target query
+    active_env = repo.get_active_target_envelope(profile.id)
+    assert active_env is not None
+    assert active_env.id == env1.id
+
+    # 2. Create second active envelope: must atomically deactivate env1
+    env2 = repo.set_active_target_envelope(
+        profile_id=profile.id,
+        calories_target=2500,
+        protein_g_target=180.0,
+        carbs_g_target=280.0,
+        fat_g_target=75.0,
+        fiber_g_target=40.0,
+    )
+    assert env2.is_active is True
+    assert env2.calories_target == 2500
+
+    # Active envelope is now env2
+    current_active = repo.get_active_target_envelope(profile.id)
+    assert current_active is not None
+    assert current_active.id == env2.id
+
+    # Verify env1 is still in DB as inactive (history preserved)
+    cursor = conn.cursor()
+    cursor.execute("SELECT is_active FROM target_envelopes WHERE id = ?;", (env1.id,))
+    assert cursor.fetchone()[0] == 0

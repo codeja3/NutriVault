@@ -5,7 +5,9 @@ import pytest
 
 from src.analytics import (
     AnalyticsEngine,
+    DailyFeedingInterval,
     RollingEMAResult,
+    calculate_chrononutrition_windows,
 )
 from src.db import ProfileRepository, init_db
 
@@ -93,3 +95,57 @@ def test_calculate_rolling_ema_empty_profile(populated_analytics_db):
     assert result.calories_ema == 0.0
     assert result.protein_g_ema == 0.0
     assert result.target_deltas == {}
+
+
+def test_calculate_chrononutrition_windows(populated_analytics_db):
+    """Verify daily feeding interval (last - first) and overnight fast calculations."""
+    conn, profile_id = populated_analytics_db
+    cursor = conn.cursor()
+
+    # Clear previous meals and add specific timestamped meals for two consecutive days
+    cursor.execute("DELETE FROM meal_logs WHERE profile_id = ?;", (profile_id,))
+
+    # Day 1: 2026-10-25 (08:00 to 18:00 -> 10h eating window)
+    meals_day1 = [
+        ("m1", "2026-10-25 08:00:00", "breakfast", 400.0),
+        ("m2", "2026-10-25 12:30:00", "lunch", 600.0),
+        ("m3", "2026-10-25 18:00:00", "dinner", 800.0),
+    ]
+    # Day 2: 2026-10-26 (09:00 to 19:00 -> 10h window, overnight fast 18:00 to 09:00 = 15h)
+    meals_day2 = [
+        ("m4", "2026-10-26 09:00:00", "breakfast", 500.0),
+        ("m5", "2026-10-26 19:00:00", "dinner", 900.0),
+    ]
+
+    for m_id, logged_at, m_type, cal in meals_day1 + meals_day2:
+        cursor.execute(
+            """
+            INSERT INTO meal_logs (
+                id, profile_id, meal_type, portion_fraction,
+                calories, protein_g, carbs_g, fat_g, fiber_g, logged_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (m_id, profile_id, m_type, 1.0, cal, 30.0, 50.0, 15.0, 5.0, logged_at),
+        )
+    conn.commit()
+
+    intervals = calculate_chrononutrition_windows(conn, profile_id=profile_id)
+    assert len(intervals) == 2
+
+    # Day 1
+    d1 = intervals[0]
+    assert isinstance(d1, DailyFeedingInterval)
+    assert d1.date == "2026-10-25"
+    assert d1.first_meal_time == "08:00:00"
+    assert d1.last_meal_time == "18:00:00"
+    assert d1.eating_window_hours == 10.0
+    assert d1.overnight_fast_hours is None  # First recorded day has no prior night
+
+    # Day 2
+    d2 = intervals[1]
+    assert d2.date == "2026-10-26"
+    assert d2.first_meal_time == "09:00:00"
+    assert d2.last_meal_time == "19:00:00"
+    assert d2.eating_window_hours == 10.0
+    # Fast from 2026-10-25 18:00 to 2026-10-26 09:00 is exactly 15 hours
+    assert d2.overnight_fast_hours == 15.0

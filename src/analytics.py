@@ -1,7 +1,8 @@
-"""Tabular analytics engine: rolling EMA calculations and target adherence deltas."""
+"""Tabular analytics engine: rolling EMA calculations, target adherence, and chrononutrition."""
 
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime
 
 from src.db import ProfileRepository
 
@@ -18,6 +19,15 @@ class RollingEMAResult:
     target_deltas: dict[str, float]
 
 
+@dataclass(frozen=True)
+class DailyFeedingInterval:
+    date: str
+    first_meal_time: str
+    last_meal_time: str
+    eating_window_hours: float
+    overnight_fast_hours: float | None
+
+
 def _compute_series_ema(values: list[float], smoothing_weight: float = 2.0) -> float:
     """Compute standard exponential moving average (EMA) across a chronological series."""
     if not values:
@@ -25,12 +35,66 @@ def _compute_series_ema(values: list[float], smoothing_weight: float = 2.0) -> f
     if len(values) == 1:
         return round(values[0], 2)
 
-    # Multiplier: alpha = 2 / (N + 1)
     k = smoothing_weight / (len(values) + 1)
     ema = values[0]
     for val in values[1:]:
         ema = (val * k) + (ema * (1.0 - k))
     return round(ema, 2)
+
+
+def calculate_chrononutrition_windows(
+    conn: sqlite3.Connection,
+    profile_id: str,
+) -> list[DailyFeedingInterval]:
+    """Calculate daily eating windows and inter-day overnight fasting intervals."""
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT DATE(logged_at) as meal_date,
+               MIN(logged_at) as first_ts,
+               MAX(logged_at) as last_ts
+        FROM meal_logs
+        WHERE profile_id = ?
+        GROUP BY DATE(logged_at)
+        ORDER BY meal_date ASC;
+        """,
+        (profile_id,),
+    )
+    rows = cursor.fetchall()
+    if not rows:
+        return []
+
+    intervals: list[DailyFeedingInterval] = []
+    prev_last_dt: datetime | None = None
+
+    for row in rows:
+        date_str = row[0]
+        first_dt = datetime.fromisoformat(row[1])
+        last_dt = datetime.fromisoformat(row[2])
+
+        # Eating window: delta between first and last meal of that day
+        window_seconds = (last_dt - first_dt).total_seconds()
+        window_hours = round(window_seconds / 3600.0, 2)
+
+        # Overnight fast: delta from previous day's last meal to current day's first meal
+        fast_hours = None
+        if prev_last_dt is not None:
+            fast_seconds = (first_dt - prev_last_dt).total_seconds()
+            if fast_seconds > 0:
+                fast_hours = round(fast_seconds / 3600.0, 2)
+
+        intervals.append(
+            DailyFeedingInterval(
+                date=date_str,
+                first_meal_time=first_dt.strftime("%H:%M:%S"),
+                last_meal_time=last_dt.strftime("%H:%M:%S"),
+                eating_window_hours=window_hours,
+                overnight_fast_hours=fast_hours,
+            )
+        )
+        prev_last_dt = last_dt
+
+    return intervals
 
 
 class AnalyticsEngine:
@@ -44,7 +108,6 @@ class AnalyticsEngine:
         """Calculate EMA for calories and macronutrients over rolling days."""
         cursor = self.conn.cursor()
 
-        # Query daily sums grouped by date in chronological order using idx_meal_logs_profile_time
         cursor.execute(
             """
             SELECT DATE(logged_at) AS meal_date,
@@ -87,7 +150,6 @@ class AnalyticsEngine:
         fat_ema = _compute_series_ema(fat_series)
         fib_ema = _compute_series_ema(fib_series)
 
-        # Calculate deltas against active target envelope if present
         target_envelope = self.repo.get_active_target_envelope(profile_id)
         target_deltas: dict[str, float] = {}
 

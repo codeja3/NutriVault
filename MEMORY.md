@@ -58,4 +58,5 @@
   * Task 5.2: Atomic multi-profile journal logging with full transaction rollback protection implemented in `src/batch_allocator.py` (`commit_batch_allocations`) with 100% offline unit test coverage in `tests/test_batch_allocator.py`.
   * Task 6.1: Windowed moving averages and target adherence deltas implemented in `src/analytics.py` (`RollingEMAResult`, `AnalyticsEngine.calculate_rolling_ema`) with 100% offline unit test coverage in `tests/test_analytics.py`.
   * Task 6.2: Chrononutrition temporal eating window and overnight fasting intervals implemented in `src/analytics.py` (`DailyFeedingInterval`, `calculate_chrononutrition_windows`) with 100% offline unit test coverage in `tests/test_analytics.py`.
-* **Next Task:** Task 7.1: Core REST Endpoints (`tests/test_api.py` and `src/api.py`).
+  * Task 7.1: Core REST API endpoints implemented in `src/api.py` (`NutriVaultAPI` handling `/api/v1/hardware`, `/api/v1/profiles`, `/api/v1/profiles/{id}/targets`, and `/api/v1/advisory/fitness-targets` with exception mapping) with 100% offline unit test coverage in `tests/test_api.py`.
+* **Next Task:** Task 7.2: Vision Ingestion, Batch Commit & Analytics Endpoints (`tests/test_api.py` and `src/api.py`).

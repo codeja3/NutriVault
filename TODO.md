@@ -50,10 +50,10 @@
   - [x] `GREEN`: Implement text normalization and matching algorithms in `src/grounding.py`.
   - [x] `REFACTOR`: Optimize scoring loops using cached token lookups.
 
-- [ ] **Task 3.2: Deterministic Linear Nutrient Scaling**
-  - [ ] `RED`: Author tests in `tests/test_grounding.py` asserting exact linear arithmetic: $\text{Nutrient} = \text{USDA}_{100\text{g}} \times (\text{grams} / 100.0)$, verifying no VLM hallucinations.
-  - [ ] `GREEN`: Implement pure deterministic math calculation engine in `src/grounding.py`.
-  - [ ] `REFACTOR`: Encapsulate macro and micronutrient aggregations into structured immutable objects.
+- [x] **Task 3.2: Deterministic Linear Nutrient Scaling**
+  - [x] `RED`: Author tests in `tests/test_grounding.py` asserting exact linear arithmetic: $\text{Nutrient} = \text{USDA}_{100\text{g}} \times (\text{grams} / 100.0)$, verifying no VLM hallucinations.
+  - [x] `GREEN`: Implement pure deterministic math calculation engine in `src/grounding.py`.
+  - [x] `REFACTOR`: Encapsulate macro and micronutrient aggregations into structured immutable objects.
 
 ---
 

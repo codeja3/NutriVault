@@ -6,7 +6,9 @@ from src.db import init_db
 from src.grounding import (
     GroundingEngine,
     GroundingMatch,
+    calculate_linear_nutrients,
     normalize_food_text,
+    resolve_food_item,
 )
 
 
@@ -136,3 +138,60 @@ def test_grounding_fuzzy_token_overlap(populated_usda_conn):
     assert len(matches) > 0
     assert matches[0].fdc_id == 1003
     assert matches[0].score > 0.5
+
+
+def test_calculate_linear_nutrients():
+    """Verify linear scaling against USDA per-100g values: Nutrient = USDA * (grams / 100)."""
+    match = GroundingMatch(
+        fdc_id=1001,
+        description="Rice, brown, long-grain, cooked",
+        food_category="Cereal Grains and Pasta",
+        preparation_state="cooked",
+        calories_per_100g=112.0,
+        protein_g_per_100g=2.3,
+        carbs_g_per_100g=23.5,
+        fat_g_per_100g=0.8,
+        fiber_g_per_100g=1.6,
+        micros_per_100g={"potassium_mg": 79.0, "magnesium_mg": 43.0},
+        score=0.95,
+    )
+
+    # Scale to 200g (factor = 2.0)
+    nutrients_200g = calculate_linear_nutrients(match, grams=200.0)
+    assert nutrients_200g.grams == 200.0
+    assert nutrients_200g.calories == 224.0
+    assert nutrients_200g.protein_g == 4.6
+    assert nutrients_200g.carbs_g == 47.0
+    assert nutrients_200g.fat_g == 1.6
+    assert nutrients_200g.fiber_g == 3.2
+    assert nutrients_200g.micronutrients["potassium_mg"] == 158.0
+    assert nutrients_200g.micronutrients["magnesium_mg"] == 86.0
+
+    # Scale to 50g (factor = 0.5)
+    nutrients_50g = calculate_linear_nutrients(match, grams=50.0)
+    assert nutrients_50g.calories == 56.0
+    assert nutrients_50g.protein_g == 1.15
+    assert nutrients_50g.carbs_g == 11.75
+    assert nutrients_50g.fat_g == 0.4
+    assert nutrients_50g.fiber_g == 0.8
+    assert nutrients_50g.micronutrients["potassium_mg"] == 39.5
+
+
+def test_resolve_food_item_end_to_end(populated_usda_conn):
+    """Verify end-to-end resolution from extracted item and mass to grounded nutrient profile."""
+    engine = GroundingEngine(populated_usda_conn)
+
+    resolved = resolve_food_item(
+        engine=engine,
+        item_name="steamed broccoli",
+        estimated_grams=150.0,
+    )
+
+    assert resolved is not None
+    assert resolved.item_name == "steamed broccoli"
+    assert resolved.matched_fdc_id == 1005
+    assert resolved.nutrients.grams == 150.0
+    assert resolved.nutrients.calories == 52.5
+    assert resolved.nutrients.protein_g == round(2.4 * 1.5, 2)
+    assert resolved.nutrients.carbs_g == round(7.2 * 1.5, 2)
+    assert resolved.nutrients.micronutrients["calcium_mg"] == round(40.0 * 1.5, 2)

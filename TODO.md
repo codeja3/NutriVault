@@ -59,10 +59,10 @@
 
 ## Phase 4: Ephemeral In-Memory Vision Pipeline
 
-- [ ] **Task 4.1: Volatile Memory Stream Management**
-  - [ ] `RED`: Author tests in `tests/test_vision_pipeline.py` asserting multipart image data remains strictly in `io.BytesIO` buffers with zero disk file leakage.
-  - [ ] `GREEN`: Implement in-memory stream receiver and memory buffer cleaner in `src/vision_pipeline.py`.
-  - [ ] `REFACTOR`: Ensure deterministic garbage collection/buffer clearing on both success and error branches.
+- [x] **Task 4.1: Volatile Memory Stream Management**
+  - [x] `RED`: Author tests in `tests/test_vision_pipeline.py` asserting multipart image data remains strictly in `io.BytesIO` buffers with zero disk file leakage.
+  - [x] `GREEN`: Implement in-memory stream receiver and memory buffer cleaner in `src/vision_pipeline.py`.
+  - [x] `REFACTOR`: Ensure deterministic garbage collection/buffer clearing on both success and error branches.
 
 - [ ] **Task 4.2: Inference Client & Strict JSON Output Contract**
   - [ ] `RED`: Author tests in `tests/test_vision_pipeline.py` asserting mocked loopback `/v1/chat/completions` parsing into `[{"item_name": str, "estimated_grams": float}]` and retry handling on malformed JSON.

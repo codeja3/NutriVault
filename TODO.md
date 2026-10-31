@@ -73,10 +73,10 @@
 
 ## Phase 5: Family Batch Portion Allocator
 
-- [ ] **Task 5.1: Fractional Portion Validation & Dish Ledger**
-  - [ ] `RED`: Author tests in `tests/test_batch_allocator.py` asserting validation on batch dish splitting ($\sum \text{fraction} \le 1.0$) and rejection of invalid sums (`ERR_INVALID_PORTION_SUM`).
-  - [ ] `GREEN`: Implement dish persistence and fractional allocation calculation in `src/batch_allocator.py`.
-  - [ ] `REFACTOR`: Optimize atomic transaction blocks writing simultaneously to `dishes` and `meal_logs`.
+- [x] **Task 5.1: Fractional Portion Validation & Dish Ledger**
+  - [x] `RED`: Author tests in `tests/test_batch_allocator.py` asserting validation on batch dish splitting ($\sum \text{fraction} \le 1.0$) and rejection of invalid sums (`ERR_INVALID_PORTION_SUM`).
+  - [x] `GREEN`: Implement dish persistence and fractional allocation calculation in `src/batch_allocator.py`.
+  - [x] `REFACTOR`: Optimize atomic transaction blocks writing simultaneously to `dishes` and `meal_logs`.
 
 - [ ] **Task 5.2: Atomic Multi-Profile Journal Logging**
   - [ ] `RED`: Author tests in `tests/test_batch_allocator.py` verifying atomic rollback if any individual profile ledger insertion fails during a split.

@@ -9,7 +9,7 @@ from src.batch_allocator import (
     InvalidPortionSumError,
     ProfilePortionAllocation,
 )
-from src.db import init_db
+from src.db import ProfileRepository, init_db
 
 
 @pytest.fixture
@@ -121,3 +121,98 @@ def test_calculate_profile_nutrients_from_dish():
     assert p_nutrients.fat_g == 5.0
     assert p_nutrients.fiber_g == 2.5
     assert p_nutrients.micronutrients["potassium_mg"] == 125.0
+
+
+def test_atomic_multi_profile_batch_commit(db_conn):
+    """Verify committing batch dish split logs meal_logs entries for each profile."""
+    repo = ProfileRepository(db_conn)
+    p1 = repo.create_profile(name="Parent A", profile_type="standard")
+    p2 = repo.create_profile(name="Parent B", profile_type="athletic")
+    p3 = repo.create_profile(name="Child", profile_type="standard")
+
+    allocator = BatchDishAllocator(db_conn)
+    dish = allocator.create_dish(
+        name="Family Pasta",
+        ingredients=[
+            DishIngredient(
+                item_name="pasta",
+                fdc_id=2001,
+                grams=500.0,
+                calories=750.0,
+                protein_g=25.0,
+                carbs_g=150.0,
+                fat_g=5.0,
+                fiber_g=10.0,
+                micros={},
+            )
+        ],
+    )
+
+    allocations = [
+        ProfilePortionAllocation(profile_id=p1.id, fraction=0.4, meal_type="dinner"),
+        ProfilePortionAllocation(profile_id=p2.id, fraction=0.4, meal_type="dinner"),
+        ProfilePortionAllocation(profile_id=p3.id, fraction=0.2, meal_type="dinner"),
+    ]
+
+    meal_log_ids = allocator.commit_batch_allocations(dish=dish, allocations=allocations)
+    assert len(meal_log_ids) == 3
+
+    cursor = db_conn.cursor()
+    # Check parent A meal log
+    cursor.execute(
+        "SELECT calories, carbs_g, portion_fraction FROM meal_logs WHERE profile_id = ?;",
+        (p1.id,),
+    )
+    row_p1 = cursor.fetchone()
+    assert row_p1[0] == 300.0  # 750 * 0.4
+    assert row_p1[1] == 60.0  # 150 * 0.4
+    assert row_p1[2] == 0.4
+
+    # Check child meal log
+    cursor.execute(
+        "SELECT calories, carbs_g, portion_fraction FROM meal_logs WHERE profile_id = ?;",
+        (p3.id,),
+    )
+    row_p3 = cursor.fetchone()
+    assert row_p3[0] == 150.0  # 750 * 0.2
+    assert row_p3[1] == 30.0  # 150 * 0.2
+    assert row_p3[2] == 0.2
+
+
+def test_atomic_rollback_on_failure(db_conn):
+    """If one insertion fails, all allocations roll back atomically."""
+    repo = ProfileRepository(db_conn)
+    p1 = repo.create_profile(name="Parent A", profile_type="standard")
+
+    allocator = BatchDishAllocator(db_conn)
+    dish = allocator.create_dish(
+        name="Test Dish",
+        ingredients=[
+            DishIngredient(
+                item_name="soup",
+                fdc_id=3001,
+                grams=300.0,
+                calories=150.0,
+                protein_g=5.0,
+                carbs_g=20.0,
+                fat_g=2.0,
+                fiber_g=2.0,
+                micros={},
+            )
+        ],
+    )
+
+    # Valid profile + Non-existent profile (violates FK PRAGMA foreign_keys = ON)
+    bad_allocations = [
+        ProfilePortionAllocation(profile_id=p1.id, fraction=0.5),
+        ProfilePortionAllocation(profile_id="non_existent_profile_uuid", fraction=0.5),
+    ]
+
+    with pytest.raises(sqlite3.IntegrityError):
+        allocator.commit_batch_allocations(dish=dish, allocations=bad_allocations)
+
+    # Assert p1 meal log was rolled back and NOT committed
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM meal_logs WHERE profile_id = ?;", (p1.id,))
+    count = cursor.fetchone()[0]
+    assert count == 0

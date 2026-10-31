@@ -146,3 +146,48 @@ class BatchDishAllocator:
             fiber_g=round(dish.total_fiber_g * fraction, 2),
             micronutrients=scaled_micros,
         )
+
+    def commit_batch_allocations(
+        self,
+        dish: BatchDish,
+        allocations: list[ProfilePortionAllocation],
+    ) -> list[str]:
+        """Atomically persist meal_logs for allocations, rolling back entirely on error."""
+        self.validate_portion_allocations(allocations)
+        inserted_log_ids: list[str] = []
+
+        cursor = self.conn.cursor()
+        try:
+            for alloc in allocations:
+                nutrients = self.calculate_profile_nutrients(dish, alloc.fraction)
+                log_id = str(uuid.uuid4())
+                micros_json = json.dumps(nutrients.micronutrients)
+
+                cursor.execute(
+                    """
+                    INSERT INTO meal_logs (
+                        id, profile_id, dish_id, meal_type, portion_fraction,
+                        calories, protein_g, carbs_g, fat_g, fiber_g, micros_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    (
+                        log_id,
+                        alloc.profile_id,
+                        dish.id,
+                        alloc.meal_type,
+                        alloc.fraction,
+                        nutrients.calories,
+                        nutrients.protein_g,
+                        nutrients.carbs_g,
+                        nutrients.fat_g,
+                        nutrients.fiber_g,
+                        micros_json,
+                    ),
+                )
+                inserted_log_ids.append(log_id)
+
+            self.conn.commit()
+            return inserted_log_ids
+        except Exception:
+            self.conn.rollback()
+            raise

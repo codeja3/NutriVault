@@ -42,7 +42,7 @@
 ## 3. Current Phase Status
 
 * **Active Phase:** Phase 3 (Neuro-Symbolic Nutritional Grounding).
-* **Active Phase:** Phase 7 (Local HTTP / REST API Layer).
+* **Active Phase:** All Phases Complete (1.1 through 7.2).
 * **Completed Tasks:**
   * Task 1.1: Virtual environment initialized with `uv`, `pyproject.toml` created with strict Python 3.11+ configuration, `pytest`, `pytest-mock`, `pytest-asyncio`, and `ruff` installed, `src/__init__.py` exposing version 1.0.0.
   * Task 1.2: Hardware probing implemented in `src/hardware.py` (`HardwareProfile`, `AcceleratorType`, OS, RAM, Apple Silicon, CUDA, and CPU fallback detection) with 100% offline unit test coverage in `tests/test_hardware.py`.
@@ -59,4 +59,5 @@
   * Task 6.1: Windowed moving averages and target adherence deltas implemented in `src/analytics.py` (`RollingEMAResult`, `AnalyticsEngine.calculate_rolling_ema`) with 100% offline unit test coverage in `tests/test_analytics.py`.
   * Task 6.2: Chrononutrition temporal eating window and overnight fasting intervals implemented in `src/analytics.py` (`DailyFeedingInterval`, `calculate_chrononutrition_windows`) with 100% offline unit test coverage in `tests/test_analytics.py`.
   * Task 7.1: Core REST API endpoints implemented in `src/api.py` (`NutriVaultAPI` handling `/api/v1/hardware`, `/api/v1/profiles`, `/api/v1/profiles/{id}/targets`, and `/api/v1/advisory/fitness-targets` with exception mapping) with 100% offline unit test coverage in `tests/test_api.py`.
-* **Next Task:** Task 7.2: Vision Ingestion, Batch Commit & Analytics Endpoints (`tests/test_api.py` and `src/api.py`).
+  * Task 7.2: End-to-end vision parsing, batch commits, and rolling analytics REST endpoints wired into `src/api.py` (`/api/v1/meals/parse-image`, `/api/v1/meals/commit`, `/api/v1/analytics/rolling`) with 100% offline unit test coverage in `tests/test_api.py`.
+* **Current Status:** 100% contract requirements fulfilled and verified across the complete offline test suite.

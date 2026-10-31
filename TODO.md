@@ -106,7 +106,7 @@
   - [x] `GREEN`: Implement REST request router and handlers in `src/api.py`.
   - [x] `REFACTOR`: Standardize JSON serialization and domain exception-to-HTTP status mapping.
 
-- [ ] **Task 7.2: Vision Ingestion, Batch Commit & Analytics Endpoints**
-  - [ ] `RED`: Author offline contract tests in `tests/test_api.py` asserting zero-disk multipart parsing on `/api/v1/meals/parse-image`, fractional batch commits on `/api/v1/meals/commit` (`ERR_INVALID_PORTION_SUM`), and 7-day EMA + eating window responses on `/api/v1/analytics/rolling`.
-  - [ ] `GREEN`: Wire vision pipeline, grounding engine, batch allocator, and analytics queries into `src/api.py`.
-  - [ ] `REFACTOR`: Verify end-to-end memory cleanup and response schema conformance.
+- [x] **Task 7.2: Vision Ingestion, Batch Commit & Analytics Endpoints**
+  - [x] `RED`: Author offline contract tests in `tests/test_api.py` asserting zero-disk multipart parsing on `/api/v1/meals/parse-image`, fractional batch commits on `/api/v1/meals/commit` (`ERR_INVALID_PORTION_SUM`), and 7-day EMA + eating window responses on `/api/v1/analytics/rolling`.
+  - [x] `GREEN`: Wire vision pipeline, grounding engine, batch allocator, and analytics queries into `src/api.py`.
+  - [x] `REFACTOR`: Verify end-to-end memory cleanup and response schema conformance.

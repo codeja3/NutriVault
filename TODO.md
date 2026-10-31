@@ -92,10 +92,10 @@
   - [x] `GREEN`: Implement windowed SQL / analytical queries in `src/analytics.py`.
   - [x] `REFACTOR`: Ensure query plan uses `idx_meal_logs_profile_time` effectively.
 
-- [ ] **Task 6.2: Temporal Eating Window Calculation**
-  - [ ] `RED`: Author tests in `tests/test_analytics.py` asserting calculation of daily feeding intervals ($\Delta t = \text{Timestamp}_{\text{last}} - \text{Timestamp}_{\text{first}}$) and overnight fasts.
-  - [ ] `GREEN`: Implement chrononutrition time-delta functions in `src/analytics.py`.
-  - [ ] `REFACTOR`: Standardize timestamp handling to UTC ISO-8601 strings.
+- [x] **Task 6.2: Temporal Eating Window Calculation**
+  - [x] `RED`: Author tests in `tests/test_analytics.py` asserting calculation of daily feeding intervals ($\Delta t = \text{Timestamp}_{\text{last}} - \text{Timestamp}_{\text{first}}$) and overnight fasts.
+  - [x] `GREEN`: Implement chrononutrition time-delta functions in `src/analytics.py`.
+  - [x] `REFACTOR`: Standardize timestamp handling to UTC ISO-8601 strings.
 
 ---
 

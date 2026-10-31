@@ -42,7 +42,7 @@
 ## 3. Current Phase Status
 
 * **Active Phase:** Phase 3 (Neuro-Symbolic Nutritional Grounding).
-* **Active Phase:** Phase 6 (Tabular Analytics Layer).
+* **Active Phase:** Phase 7 (Local HTTP / REST API Layer).
 * **Completed Tasks:**
   * Task 1.1: Virtual environment initialized with `uv`, `pyproject.toml` created with strict Python 3.11+ configuration, `pytest`, `pytest-mock`, `pytest-asyncio`, and `ruff` installed, `src/__init__.py` exposing version 1.0.0.
   * Task 1.2: Hardware probing implemented in `src/hardware.py` (`HardwareProfile`, `AcceleratorType`, OS, RAM, Apple Silicon, CUDA, and CPU fallback detection) with 100% offline unit test coverage in `tests/test_hardware.py`.
@@ -57,4 +57,5 @@
   * Task 5.1: Batch dish ledger and fractional portion validation implemented in `src/batch_allocator.py` (`BatchDish`, `DishIngredient`, `ProfilePortionAllocation`, `BatchDishAllocator`, `InvalidPortionSumError` with `ERR_INVALID_PORTION_SUM`) with 100% offline unit test coverage in `tests/test_batch_allocator.py`.
   * Task 5.2: Atomic multi-profile journal logging with full transaction rollback protection implemented in `src/batch_allocator.py` (`commit_batch_allocations`) with 100% offline unit test coverage in `tests/test_batch_allocator.py`.
   * Task 6.1: Windowed moving averages and target adherence deltas implemented in `src/analytics.py` (`RollingEMAResult`, `AnalyticsEngine.calculate_rolling_ema`) with 100% offline unit test coverage in `tests/test_analytics.py`.
-* **Next Task:** Task 6.2: Temporal Eating Window Calculation (`tests/test_analytics.py` and `src/analytics.py`).
+  * Task 6.2: Chrononutrition temporal eating window and overnight fasting intervals implemented in `src/analytics.py` (`DailyFeedingInterval`, `calculate_chrononutrition_windows`) with 100% offline unit test coverage in `tests/test_analytics.py`.
+* **Next Task:** Task 7.1: Core REST Endpoints (`tests/test_api.py` and `src/api.py`).

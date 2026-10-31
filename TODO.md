@@ -45,10 +45,10 @@
 
 ## Phase 3: Neuro-Symbolic Nutritional Grounding
 
-- [ ] **Task 3.1: Token Normalization & Fuzzy Token Overlap Engine**
-  - [ ] `RED`: Author tests in `tests/test_grounding.py` testing string normalization, token scoring, and candidate ranking against mock USDA reference rows.
-  - [ ] `GREEN`: Implement text normalization and matching algorithms in `src/grounding.py`.
-  - [ ] `REFACTOR`: Optimize scoring loops using cached token lookups.
+- [x] **Task 3.1: Token Normalization & Fuzzy Token Overlap Engine**
+  - [x] `RED`: Author tests in `tests/test_grounding.py` testing string normalization, token scoring, and candidate ranking against mock USDA reference rows.
+  - [x] `GREEN`: Implement text normalization and matching algorithms in `src/grounding.py`.
+  - [x] `REFACTOR`: Optimize scoring loops using cached token lookups.
 
 - [ ] **Task 3.2: Deterministic Linear Nutrient Scaling**
   - [ ] `RED`: Author tests in `tests/test_grounding.py` asserting exact linear arithmetic: $\text{Nutrient} = \text{USDA}_{100\text{g}} \times (\text{grams} / 100.0)$, verifying no VLM hallucinations.

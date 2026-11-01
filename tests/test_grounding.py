@@ -177,6 +177,25 @@ def test_calculate_linear_nutrients():
     assert nutrients_50g.micronutrients["potassium_mg"] == 39.5
 
 
+def test_calculate_linear_nutrients_rejects_negative_grams():
+    """calculate_linear_nutrients must reject negative gram values."""
+    match = GroundingMatch(
+        fdc_id=1001,
+        description="Rice, brown, cooked",
+        food_category="Cereal Grains",
+        preparation_state="cooked",
+        calories_per_100g=112.0,
+        protein_g_per_100g=2.3,
+        carbs_g_per_100g=23.5,
+        fat_g_per_100g=0.8,
+        fiber_g_per_100g=1.6,
+        micros_per_100g={},
+        score=1.0,
+    )
+    with pytest.raises(ValueError, match="non-negative"):
+        calculate_linear_nutrients(match, grams=-50.0)
+
+
 def test_resolve_food_item_end_to_end(populated_usda_conn):
     """Verify end-to-end resolution from extracted item and mass to grounded nutrient profile."""
     engine = GroundingEngine(populated_usda_conn)
@@ -195,3 +214,28 @@ def test_resolve_food_item_end_to_end(populated_usda_conn):
     assert resolved.nutrients.protein_g == round(2.4 * 1.5, 2)
     assert resolved.nutrients.carbs_g == round(7.2 * 1.5, 2)
     assert resolved.nutrients.micronutrients["calcium_mg"] == round(40.0 * 1.5, 2)
+
+
+def test_grounding_engine_token_cache(populated_usda_conn):
+    """GroundingEngine caches pre-tokenized USDA entries in RAM to avoid table scans."""
+    engine = GroundingEngine(populated_usda_conn)
+    assert engine.is_cached is False
+
+    # First search populates cache
+    m1 = engine.search_candidates("brown rice", limit=3)
+    assert len(m1) > 0
+    assert engine.is_cached is True
+    cache_len = len(engine._cache)
+    assert cache_len > 0
+
+    # Subsequent search uses cached tokens
+    m2 = engine.search_candidates("cooked brown rice", limit=3)
+    assert len(m2) > 0
+    assert engine.is_cached is True
+
+    # Explicit cache invalidation clears cache
+    engine.invalidate_cache()
+    assert engine.is_cached is False
+    m3 = engine.search_candidates("raw brown rice", limit=3)
+    assert len(m3) > 0
+    assert engine.is_cached is True

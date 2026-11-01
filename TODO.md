@@ -110,3 +110,32 @@
   - [x] `RED`: Author offline contract tests in `tests/test_api.py` asserting zero-disk multipart parsing on `/api/v1/meals/parse-image`, fractional batch commits on `/api/v1/meals/commit` (`ERR_INVALID_PORTION_SUM`), and 7-day EMA + eating window responses on `/api/v1/analytics/rolling`.
   - [x] `GREEN`: Wire vision pipeline, grounding engine, batch allocator, and analytics queries into `src/api.py`.
   - [x] `REFACTOR`: Verify end-to-end memory cleanup and response schema conformance.
+
+---
+
+## Phase 8: Security Hardening, Defect Remediation & Production Readiness
+
+- [x] **Task 8.1: Memory Zeroing, SSRF Guard & Error Sanitization**
+  - [x] `RED`: Author tests asserting EphemeralImageBuffer memoryview zeroing, VLMClient SSRF loopback validation, and sanitization of HTTP 500 responses.
+  - [x] `GREEN`: Implement in-place volatile buffer overwrite, loopback host restriction in VLMClient, and generic 500 error responses in `src/vision_pipeline.py` and `src/api.py`.
+  - [x] `REFACTOR`: Clean up buffer release safety and error handling patterns.
+
+- [x] **Task 8.2: Target Validation, Pydantic Request Schemas & Non-Negative Constraints**
+  - [x] `RED`: Author tests for athletic advisory acknowledgment enforcement, chronic condition target locks on PUT, non-negative nutrient/portion constraints, and request body validation returning 400.
+  - [x] `GREEN`: Implement Pydantic request models in `src/api.py`, DDL schema CHECK constraints in `src/db.py`, and non-negative guards in `src/grounding.py`.
+  - [x] `REFACTOR`: Ensure clean mapping of Pydantic validation errors to HTTP 400 responses.
+
+- [x] **Task 8.3: Analytics EMA Windowing, Chrononutrition Gaps & VLM JSON Extraction**
+  - [x] `RED`: Author tests asserting rolling EMA selects the most recent N days chronologically, chrononutrition flags non-consecutive day gaps, and clean_vlm_json_output handles nested JSON.
+  - [x] `GREEN`: Implement DESC-then-ASC EMA subquery in `src/analytics.py`, calendar-day consecutive check in `calculate_chrononutrition_windows`, and robust bracket bounding in `clean_vlm_json_output`.
+  - [x] `REFACTOR`: Verify performance and index utilization on analytical queries.
+
+- [x] **Task 8.4: Atomic Meal Commit & Multipart Form Ingestion**
+  - [x] `RED`: Author tests asserting atomic rollback across dishes and meal_logs on failure, and multipart/form-data boundary parsing.
+  - [x] `GREEN`: Implement unified transaction in `BatchDishAllocator` / `NutriVaultAPI._handle_commit_meal` and multipart parser in `_handle_parse_image`.
+  - [x] `REFACTOR`: Ensure zero disk writes during multipart parsing and clean rollback semantics.
+
+- [x] **Task 8.5: GroundingEngine Cache, Dual-DB Attachment & HTTP Server CLI**
+  - [x] `RED`: Author tests asserting GroundingEngine token cache speedup, database attachment helper in `src/db.py`, and HTTP server entrypoint.
+  - [x] `GREEN`: Implement cached token sets in `GroundingEngine`, `attach_usda_reference` helper in `src/db.py`, and `ThreadingHTTPServer` CLI runner in `src/api.py`.
+  - [x] `REFACTOR`: Verify `MANUAL.md` compatibility and run full test suite with Ruff lint/format.

@@ -79,9 +79,11 @@ def calculate_chrononutrition_windows(
         # Overnight fast: delta from previous day's last meal to current day's first meal
         fast_hours = None
         if prev_last_dt is not None:
-            fast_seconds = (first_dt - prev_last_dt).total_seconds()
-            if fast_seconds > 0:
-                fast_hours = round(fast_seconds / 3600.0, 2)
+            day_diff = (first_dt.date() - prev_last_dt.date()).days
+            if day_diff == 1:
+                fast_seconds = (first_dt - prev_last_dt).total_seconds()
+                if fast_seconds > 0:
+                    fast_hours = round(fast_seconds / 3600.0, 2)
 
         intervals.append(
             DailyFeedingInterval(
@@ -110,17 +112,21 @@ class AnalyticsEngine:
 
         cursor.execute(
             """
-            SELECT DATE(logged_at) AS meal_date,
-                   SUM(calories) AS day_calories,
-                   SUM(protein_g) AS day_protein,
-                   SUM(carbs_g) AS day_carbs,
-                   SUM(fat_g) AS day_fat,
-                   SUM(fiber_g) AS day_fiber
-            FROM meal_logs
-            WHERE profile_id = ?
-            GROUP BY DATE(logged_at)
-            ORDER BY meal_date ASC
-            LIMIT ?;
+            SELECT meal_date, day_calories, day_protein, day_carbs, day_fat, day_fiber
+            FROM (
+                SELECT DATE(logged_at) AS meal_date,
+                       SUM(calories) AS day_calories,
+                       SUM(protein_g) AS day_protein,
+                       SUM(carbs_g) AS day_carbs,
+                       SUM(fat_g) AS day_fat,
+                       SUM(fiber_g) AS day_fiber
+                FROM meal_logs
+                WHERE profile_id = ?
+                GROUP BY DATE(logged_at)
+                ORDER BY meal_date DESC
+                LIMIT ?
+            )
+            ORDER BY meal_date ASC;
             """,
             (profile_id, days),
         )

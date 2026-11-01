@@ -4,6 +4,7 @@ import pytest
 
 from src.db import (
     ProfileRepository,
+    attach_usda_reference,
     init_db,
 )
 
@@ -288,3 +289,80 @@ def test_target_envelope_crud_and_atomic_switch():
     cursor = conn.cursor()
     cursor.execute("SELECT is_active FROM target_envelopes WHERE id = ?;", (env1.id,))
     assert cursor.fetchone()[0] == 0
+
+
+def test_target_envelopes_negative_check_constraints():
+    """target_envelopes must reject negative calorie and macro targets via CHECK constraints."""
+    conn = sqlite3.connect(":memory:")
+    init_db(conn)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "INSERT INTO profiles (id, name, profile_type) VALUES ('p_chk', 'Test', 'standard');"
+    )
+    conn.commit()
+
+    with pytest.raises(sqlite3.IntegrityError):
+        cursor.execute(
+            """
+            INSERT INTO target_envelopes (
+                id, profile_id, calories_target, protein_g_target,
+                carbs_g_target, fat_g_target, fiber_g_target
+            ) VALUES ('e_neg', 'p_chk', -500, 100.0, 100.0, 50.0, 20.0);
+            """
+        )
+        conn.commit()
+
+
+def test_dishes_and_meal_logs_negative_check_constraints():
+    """dishes and meal_logs must reject negative calories/macros via CHECK constraints."""
+    conn = sqlite3.connect(":memory:")
+    init_db(conn)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "INSERT INTO profiles (id, name, profile_type) VALUES ('p_chk2', 'Test2', 'standard');"
+    )
+    conn.commit()
+
+    # Dishes negative calories
+    with pytest.raises(sqlite3.IntegrityError):
+        cursor.execute(
+            """
+            INSERT INTO dishes (
+                id, name, total_estimated_grams, total_calories,
+                total_protein_g, total_carbs_g, total_fat_g, total_fiber_g, raw_ingredients_json
+            ) VALUES ('d_neg', 'Dish', 200.0, -100.0, 10.0, 10.0, 5.0, 2.0, '[]');
+            """
+        )
+        conn.commit()
+
+    # Meal logs negative protein
+    with pytest.raises(sqlite3.IntegrityError):
+        cursor.execute(
+            """
+            INSERT INTO meal_logs (
+                id, profile_id, meal_type, portion_fraction,
+                calories, protein_g, carbs_g, fat_g, fiber_g
+            ) VALUES ('m_neg', 'p_chk2', 'dinner', 1.0, 200.0, -10.0, 20.0, 5.0, 2.0);
+            """
+        )
+        conn.commit()
+
+
+def test_attach_usda_reference(tmp_path):
+    """attach_usda_reference should attach secondary USDA database schema as 'usda'."""
+    main_conn = sqlite3.connect(":memory:")
+    init_db(main_conn)
+
+    usda_file = str(tmp_path / "usda_reference.db")
+    usda_conn = sqlite3.connect(usda_file)
+    usda_conn.execute("CREATE TABLE usda_test (id INTEGER PRIMARY KEY);")
+    usda_conn.commit()
+    usda_conn.close()
+
+    attach_usda_reference(main_conn, usda_file, schema_name="usda")
+    cursor = main_conn.cursor()
+    cursor.execute("SELECT name FROM usda.sqlite_master WHERE type='table';")
+    tables = [row[0] for row in cursor.fetchall()]
+    assert "usda_test" in tables

@@ -42,11 +42,11 @@ CREATE TABLE IF NOT EXISTS profiles (
 CREATE TABLE IF NOT EXISTS target_envelopes (
     id TEXT PRIMARY KEY,
     profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    calories_target INTEGER NOT NULL,
-    protein_g_target REAL NOT NULL,
-    carbs_g_target REAL NOT NULL,
-    fat_g_target REAL NOT NULL,
-    fiber_g_target REAL NOT NULL,
+    calories_target INTEGER NOT NULL CHECK (calories_target >= 0),
+    protein_g_target REAL NOT NULL CHECK (protein_g_target >= 0.0),
+    carbs_g_target REAL NOT NULL CHECK (carbs_g_target >= 0.0),
+    fat_g_target REAL NOT NULL CHECK (fat_g_target >= 0.0),
+    fiber_g_target REAL NOT NULL CHECK (fiber_g_target >= 0.0),
     micronutrients_json TEXT NOT NULL DEFAULT '{}',
     is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -56,12 +56,12 @@ CREATE TABLE IF NOT EXISTS target_envelopes (
 CREATE TABLE IF NOT EXISTS dishes (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    total_estimated_grams REAL NOT NULL,
-    total_calories REAL NOT NULL,
-    total_protein_g REAL NOT NULL,
-    total_carbs_g REAL NOT NULL,
-    total_fat_g REAL NOT NULL,
-    total_fiber_g REAL NOT NULL,
+    total_estimated_grams REAL NOT NULL CHECK (total_estimated_grams >= 0.0),
+    total_calories REAL NOT NULL CHECK (total_calories >= 0.0),
+    total_protein_g REAL NOT NULL CHECK (total_protein_g >= 0.0),
+    total_carbs_g REAL NOT NULL CHECK (total_carbs_g >= 0.0),
+    total_fat_g REAL NOT NULL CHECK (total_fat_g >= 0.0),
+    total_fiber_g REAL NOT NULL CHECK (total_fiber_g >= 0.0),
     total_micros_json TEXT NOT NULL DEFAULT '{}',
     raw_ingredients_json TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -78,11 +78,11 @@ CREATE TABLE IF NOT EXISTS meal_logs (
     portion_fraction REAL NOT NULL DEFAULT 1.0 CHECK (
         portion_fraction > 0.0 AND portion_fraction <= 1.0
     ),
-    calories REAL NOT NULL,
-    protein_g REAL NOT NULL,
-    carbs_g REAL NOT NULL,
-    fat_g REAL NOT NULL,
-    fiber_g REAL NOT NULL,
+    calories REAL NOT NULL CHECK (calories >= 0.0),
+    protein_g REAL NOT NULL CHECK (protein_g >= 0.0),
+    carbs_g REAL NOT NULL CHECK (carbs_g >= 0.0),
+    fat_g REAL NOT NULL CHECK (fat_g >= 0.0),
+    fiber_g REAL NOT NULL CHECK (fiber_g >= 0.0),
     micros_json TEXT NOT NULL DEFAULT '{}',
     logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -317,3 +317,13 @@ class ProfileRepository:
             is_active=bool(row[8]),
             created_at=row[9],
         )
+
+
+def attach_usda_reference(
+    conn: sqlite3.Connection,
+    usda_db_path: str,
+    schema_name: str = "usda",
+) -> None:
+    """Attach external USDA reference SQLite database as a named schema."""
+    cursor = conn.cursor()
+    cursor.execute(f"ATTACH DATABASE ? AS {schema_name};", (usda_db_path,))

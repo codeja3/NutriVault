@@ -6,6 +6,7 @@ import io
 import json
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
@@ -94,9 +95,21 @@ class EphemeralImageBuffer:
         if self._is_purged:
             return
         if self._stream is not None:
+            try:
+                buf = self._stream.getbuffer()
+                buf[:] = b"\x00" * len(buf)
+                buf.release()
+            except (ValueError, BufferError):
+                pass
             self._stream.seek(0)
-            self._stream.truncate(0)
-            self._stream.close()
+            try:
+                self._stream.truncate(0)
+            except BufferError:
+                pass
+            try:
+                self._stream.close()
+            except BufferError:
+                pass
             self._stream = None
         self._is_purged = True
         gc.collect()
@@ -110,15 +123,17 @@ class EphemeralImageBuffer:
 
 def clean_vlm_json_output(content: str) -> str:
     """Extract and isolate JSON array string, stripping markdown fences or text."""
-    # Find matching bracket pair [...]
-    match = re.search(r"\[\s*\{.*?\}\s*\]", content, re.DOTALL)
-    if match:
-        return match.group(0).strip()
-
     # Fallback to stripping markdown fences
     cleaned = re.sub(r"^```(?:json)?", "", content.strip(), flags=re.MULTILINE)
-    cleaned = re.sub(r"```$", "", cleaned.strip(), flags=re.MULTILINE)
-    return cleaned.strip()
+    cleaned = re.sub(r"```$", "", cleaned.strip(), flags=re.MULTILINE).strip()
+
+    # Find matching outermost bracket pair [...]
+    start = cleaned.find("[")
+    end = cleaned.rfind("]")
+    if start != -1 and end != -1 and end > start:
+        return cleaned[start : end + 1].strip()
+
+    return cleaned
 
 
 def _post_loopback_json(
@@ -145,6 +160,13 @@ class VLMClient:
     """Embedded loopback client communicating with local llama.cpp /v1/chat/completions."""
 
     def __init__(self, endpoint_url: str = "http://127.0.0.1:8080/v1/chat/completions"):
+        parsed = urllib.parse.urlparse(endpoint_url)
+        hostname = (parsed.hostname or "").lower()
+        if hostname not in {"127.0.0.1", "localhost", "::1"}:
+            raise ValueError(
+                f"VLM endpoint URL '{endpoint_url}' is not a local loopback address. "
+                "Must be '127.0.0.1', 'localhost', or '::1' to prevent WAN SSRF."
+            )
         self.endpoint_url = endpoint_url
 
     def parse_meal_image(

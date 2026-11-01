@@ -1,11 +1,14 @@
 """Local REST API router and request dispatcher for NutriVault services."""
 
+import http.server
 import json
 import re
 import sqlite3
 import urllib.parse
 from dataclasses import asdict
 from typing import Any
+
+from pydantic import BaseModel, Field, ValidationError
 
 from src.advisory import (
     ClinicalAdvisoryViolationError,
@@ -21,7 +24,7 @@ from src.batch_allocator import (
     InvalidPortionSumError,
     ProfilePortionAllocation,
 )
-from src.db import ProfileRepository
+from src.db import ProfileRepository, init_db
 from src.grounding import (
     GroundingEngine,
     resolve_food_item,
@@ -38,6 +41,89 @@ from src.vision_pipeline import (
     VLMInvalidJSONError,
     VLMUnavailableError,
 )
+
+
+class ProfileCreateRequest(BaseModel):
+    name: str
+    profile_type: str
+    birth_date: str | None = None
+    condition_notes: str | None = None
+
+
+class TargetEnvelopeRequest(BaseModel):
+    calories_target: int = Field(ge=0)
+    protein_g_target: float = Field(ge=0.0)
+    carbs_g_target: float = Field(ge=0.0)
+    fat_g_target: float = Field(ge=0.0)
+    fiber_g_target: float = Field(ge=0.0)
+    micronutrients: dict[str, float] | None = None
+    is_ai_generated: bool = False
+    acknowledged: bool = False
+
+
+class FitnessAdvisoryRequest(BaseModel):
+    profile_id: str
+    athletic_goal: str = "general"
+    weight_kg: float = Field(gt=0.0)
+
+
+class DishIngredientRequest(BaseModel):
+    item_name: str
+    fdc_id: int
+    grams: float = Field(ge=0.0)
+    calories: float = Field(ge=0.0)
+    protein_g: float = Field(ge=0.0)
+    carbs_g: float = Field(ge=0.0)
+    fat_g: float = Field(ge=0.0)
+    fiber_g: float = Field(ge=0.0)
+    micros: dict[str, float] = Field(default_factory=dict)
+
+
+class ProfilePortionAllocationRequest(BaseModel):
+    profile_id: str
+    fraction: float
+    meal_type: str = "dinner"
+
+
+class MealCommitRequest(BaseModel):
+    dish_name: str
+    ingredients: list[DishIngredientRequest]
+    allocations: list[ProfilePortionAllocationRequest]
+
+
+def _extract_image_bytes(raw_body: bytes, content_type: str) -> bytes:
+    """Extract raw image binary bytes from multipart/form-data or direct payload."""
+    if not content_type or "multipart/form-data" not in content_type:
+        return raw_body
+
+    boundary = None
+    for part in content_type.split(";"):
+        part = part.strip()
+        if part.startswith("boundary="):
+            boundary = part.split("boundary=", 1)[1].strip('"').strip("'")
+            break
+
+    boundary_bytes = (f"--{boundary}" if boundary else "--").encode("utf-8")
+    parts = raw_body.split(boundary_bytes)
+    for p in parts:
+        if not p or p in (b"--\r\n", b"--", b"\r\n"):
+            continue
+        if b"\r\n\r\n" in p:
+            hdr, body = p.split(b"\r\n\r\n", 1)
+        elif b"\n\n" in p:
+            hdr, body = p.split(b"\n\n", 1)
+        else:
+            continue
+
+        hdr_str = hdr.decode("utf-8", errors="ignore").lower()
+        if 'name="image"' in hdr_str or "filename=" in hdr_str or "image/" in hdr_str:
+            if body.endswith(b"\r\n"):
+                body = body[:-2]
+            elif body.endswith(b"\n"):
+                body = body[:-1]
+            return body
+
+    return raw_body
 
 
 class NutriVaultAPI:
@@ -101,7 +187,7 @@ class NutriVaultAPI:
 
             # 6. POST /api/v1/meals/parse-image
             if method == "POST" and route_path == "/api/v1/meals/parse-image":
-                return self._handle_parse_image(raw_body)
+                return self._handle_parse_image(raw_body, content_type)
 
             # 7. POST /api/v1/meals/commit
             if method == "POST" and route_path == "/api/v1/meals/commit":
@@ -125,6 +211,8 @@ class NutriVaultAPI:
             )
         except InvalidPortionSumError as e:
             return 400, json.dumps({"error_code": e.error_code, "error": str(e)})
+        except (ValidationError, json.JSONDecodeError) as e:
+            return 400, json.dumps({"error": str(e)})
         except ImagePayloadTooLargeError as e:
             return 413, json.dumps({"error_code": e.error_code, "error": str(e)})
         except VLMInvalidJSONError as e:
@@ -135,8 +223,8 @@ class NutriVaultAPI:
             return 404, json.dumps({"error": str(e)})
         except ValueError as e:
             return 400, json.dumps({"error": str(e)})
-        except Exception as e:
-            return 500, json.dumps({"error": f"Internal server error: {e}"})
+        except Exception:
+            return 500, json.dumps({"error": "Internal server error."})
 
     def _handle_get_hardware(self) -> tuple[int, str]:
         resp = {
@@ -154,44 +242,64 @@ class NutriVaultAPI:
         return 200, json.dumps([asdict(p) for p in profiles])
 
     def _handle_create_profile(self, data: dict[str, Any]) -> tuple[int, str]:
+        req = ProfileCreateRequest.model_validate(data)
         profile = self.repo.create_profile(
-            name=data["name"],
-            profile_type=data["profile_type"],
-            birth_date=data.get("birth_date"),
-            condition_notes=data.get("condition_notes"),
+            name=req.name,
+            profile_type=req.profile_type,
+            birth_date=req.birth_date,
+            condition_notes=req.condition_notes,
         )
         return 201, json.dumps(asdict(profile))
 
     def _handle_set_targets(self, profile_id: str, data: dict[str, Any]) -> tuple[int, str]:
-        envelope = self.repo.set_active_target_envelope(
-            profile_id=profile_id,
-            calories_target=int(data["calories_target"]),
-            protein_g_target=float(data["protein_g_target"]),
-            carbs_g_target=float(data["carbs_g_target"]),
-            fat_g_target=float(data["fat_g_target"]),
-            fiber_g_target=float(data["fiber_g_target"]),
-            micronutrients=data.get("micronutrients"),
-        )
-        return 200, json.dumps(asdict(envelope))
-
-    def _handle_advisory_targets(self, data: dict[str, Any]) -> tuple[int, str]:
-        profile_id = data["profile_id"]
         profile = self.repo.get_profile(profile_id)
         if not profile:
             raise KeyError(f"Profile '{profile_id}' not found.")
 
+        req = TargetEnvelopeRequest.model_validate(data)
+        if req.is_ai_generated:
+            if profile.profile_type == "chronic_condition":
+                raise ClinicalAdvisoryViolationError()
+            if profile.profile_type == "athletic" and not req.acknowledged:
+                raise ValueError(
+                    "Athletic AI-generated target envelope requires explicit "
+                    "acknowledgment (acknowledged: true)."
+                )
+
+        envelope = self.repo.set_active_target_envelope(
+            profile_id=profile_id,
+            calories_target=req.calories_target,
+            protein_g_target=req.protein_g_target,
+            carbs_g_target=req.carbs_g_target,
+            fat_g_target=req.fat_g_target,
+            fiber_g_target=req.fiber_g_target,
+            micronutrients=req.micronutrients,
+        )
+        return 200, json.dumps(asdict(envelope))
+
+    def _handle_advisory_targets(self, data: dict[str, Any]) -> tuple[int, str]:
+        req = FitnessAdvisoryRequest.model_validate(data)
+        profile = self.repo.get_profile(req.profile_id)
+        if not profile:
+            raise KeyError(f"Profile '{req.profile_id}' not found.")
+
         response = generate_athletic_targets(
             profile=profile,
-            athletic_goal=data.get("athletic_goal", "general"),
-            weight_kg=float(data["weight_kg"]),
+            athletic_goal=req.athletic_goal,
+            weight_kg=req.weight_kg,
         )
         return 200, json.dumps(asdict(response))
 
-    def _handle_parse_image(self, raw_body: bytes | None) -> tuple[int, str]:
+    def _handle_parse_image(
+        self,
+        raw_body: bytes | None,
+        content_type: str = "application/json",
+    ) -> tuple[int, str]:
         if not raw_body:
             raise ValueError("No image payload provided.")
 
-        with EphemeralImageBuffer.from_bytes(raw_body) as buffer:
+        image_bytes = _extract_image_bytes(raw_body, content_type)
+        with EphemeralImageBuffer.from_bytes(image_bytes) as buffer:
             candidate_items = self.vlm_client.parse_meal_image(buffer)
 
         grounded_items = []
@@ -225,34 +333,36 @@ class NutriVaultAPI:
         return 200, json.dumps({"items": grounded_items})
 
     def _handle_commit_meal(self, data: dict[str, Any]) -> tuple[int, str]:
-        dish_name = data["dish_name"]
+        req = MealCommitRequest.model_validate(data)
         ingredients = [
             DishIngredient(
-                item_name=ing["item_name"],
-                fdc_id=int(ing["fdc_id"]),
-                grams=float(ing["grams"]),
-                calories=float(ing["calories"]),
-                protein_g=float(ing["protein_g"]),
-                carbs_g=float(ing["carbs_g"]),
-                fat_g=float(ing["fat_g"]),
-                fiber_g=float(ing["fiber_g"]),
-                micros=ing.get("micros", {}),
+                item_name=ing.item_name,
+                fdc_id=ing.fdc_id,
+                grams=ing.grams,
+                calories=ing.calories,
+                protein_g=ing.protein_g,
+                carbs_g=ing.carbs_g,
+                fat_g=ing.fat_g,
+                fiber_g=ing.fiber_g,
+                micros=ing.micros,
             )
-            for ing in data["ingredients"]
+            for ing in req.ingredients
         ]
-
-        dish = self.batch_allocator.create_dish(name=dish_name, ingredients=ingredients)
 
         allocations = [
             ProfilePortionAllocation(
-                profile_id=a["profile_id"],
-                fraction=float(a["fraction"]),
-                meal_type=a.get("meal_type", "dinner"),
+                profile_id=a.profile_id,
+                fraction=a.fraction,
+                meal_type=a.meal_type,
             )
-            for a in data["allocations"]
+            for a in req.allocations
         ]
 
-        log_ids = self.batch_allocator.commit_batch_allocations(dish=dish, allocations=allocations)
+        dish, log_ids = self.batch_allocator.commit_meal(
+            name=req.dish_name,
+            ingredients=ingredients,
+            allocations=allocations,
+        )
 
         return 201, json.dumps({"dish_id": dish.id, "meal_log_ids": log_ids})
 
@@ -264,3 +374,99 @@ class NutriVaultAPI:
         resp["feeding_intervals"] = [asdict(interval) for interval in feeding_intervals]
 
         return 200, json.dumps(resp)
+
+
+class NutriVaultHTTPHandler(http.server.BaseHTTPRequestHandler):
+    """Standard library HTTP server handler dispatching requests to NutriVaultAPI."""
+
+    api: NutriVaultAPI
+
+    def do_GET(self) -> None:
+        self._dispatch("GET")
+
+    def do_POST(self) -> None:
+        self._dispatch("POST")
+
+    def do_PUT(self) -> None:
+        self._dispatch("PUT")
+
+    def do_DELETE(self) -> None:
+        self._dispatch("DELETE")
+
+    def _dispatch(self, method: str) -> None:
+        content_length = int(self.headers.get("Content-Length", 0))
+        content_type = self.headers.get("Content-Type", "application/json")
+        raw_body = self.rfile.read(content_length) if content_length > 0 else None
+        body = (
+            raw_body.decode("utf-8", errors="ignore")
+            if raw_body and "multipart" not in content_type
+            else None
+        )
+
+        status_code, response_body = self.api.handle_request(
+            method=method,
+            path=self.path,
+            body=body,
+            raw_body=raw_body,
+            content_type=content_type,
+        )
+
+        self.send_response(status_code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(response_body.encode("utf-8"))))
+        self.end_headers()
+        self.wfile.write(response_body.encode("utf-8"))
+
+    def log_message(self, format: str, *args: Any) -> None:
+        # Suppress noisy standard HTTP access logs
+        pass
+
+
+def run_server(
+    host: str = "0.0.0.0",
+    port: int = 8080,
+    db_path: str = "data/nutrivault.db",
+) -> None:
+    """Run NutriVault local REST service daemon."""
+    import os
+
+    os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    init_db(conn)
+
+    api_instance = NutriVaultAPI(conn=conn)
+
+    class CustomHandler(NutriVaultHTTPHandler):
+        api = api_instance
+
+    server = http.server.ThreadingHTTPServer((host, port), CustomHandler)
+    print(f"NutriVault service running at http://{host}:{port}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nShutting down NutriVault service...")
+    finally:
+        server.server_close()
+        conn.close()
+
+
+if __name__ == "__main__":
+    import os
+    import sys
+
+    host_arg = os.environ.get("NUTRIVAULT_HOST", "0.0.0.0")
+    port_arg = int(os.environ.get("NUTRIVAULT_PORT", "8080"))
+    db_arg = os.environ.get("NUTRIVAULT_DB", "data/nutrivault.db")
+
+    if "--help" in sys.argv:
+        print("Usage: python -m src.api [host] [port] [db_path]")
+        sys.exit(0)
+
+    if len(sys.argv) > 1:
+        host_arg = sys.argv[1]
+    if len(sys.argv) > 2:
+        port_arg = int(sys.argv[2])
+    if len(sys.argv) > 3:
+        db_arg = sys.argv[3]
+
+    run_server(host=host_arg, port=port_arg, db_path=db_arg)

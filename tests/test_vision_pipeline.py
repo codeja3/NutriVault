@@ -75,6 +75,21 @@ Hope that helps!"""
     cleaned2 = clean_vlm_json_output(raw_with_text)
     assert cleaned2 == '[{"item_name": "apple", "estimated_grams": 120.0}]'
 
+    # Nested braces / objects inside candidate array items
+    nested_json = """Here is your meal:
+    [
+      {"item_name": "tofu", "estimated_grams": 100.0, "details": {"prep": "steamed"}},
+      {"item_name": "brown rice", "estimated_grams": 150.0, "notes": {"grain": "whole"}}
+    ]
+    End of response."""
+    cleaned3 = clean_vlm_json_output(nested_json)
+    import json
+
+    parsed = json.loads(cleaned3)
+    assert len(parsed) == 2
+    assert parsed[0]["item_name"] == "tofu"
+    assert parsed[1]["item_name"] == "brown rice"
+
 
 def test_vlm_client_parse_success(mocker):
     """Assert successful loopback /v1/chat/completions call extracts ExtractedCandidateItem list."""
@@ -138,3 +153,37 @@ def test_vlm_client_unavailable_error(mocker):
             client.parse_meal_image(buf)
 
     assert exc_info.value.error_code == "ERR_VLM_UNAVAILABLE"
+
+
+def test_ephemeral_image_buffer_purge_zeroes_memory():
+    """Purge must overwrite underlying buffer memoryview with 0x00 before freeing."""
+    data = b"sensitive_user_photo_data_12345"
+    buf = EphemeralImageBuffer.from_bytes(data)
+    stream = buf._stream
+    assert stream is not None
+    # Keep reference to memoryview to inspect bytes upon zeroing
+    mem = stream.getbuffer()
+    assert bytes(mem) == data
+
+    # When purged, underlying bytes in the memoryview must be zeroed out
+    buf.purge()
+    assert bytes(mem) == b"\x00" * len(data)
+    mem.release()
+    assert buf.is_purged is True
+
+
+def test_vlm_client_ssrf_non_loopback_rejected():
+    """VLMClient must reject non-loopback hostnames to prevent WAN SSRF."""
+    with pytest.raises(ValueError, match="local loopback"):
+        VLMClient(endpoint_url="http://remote-host.com:8080/v1/chat/completions")
+
+    with pytest.raises(ValueError, match="local loopback"):
+        VLMClient(endpoint_url="https://192.168.1.100:8080/v1/chat/completions")
+
+    # Valid loopback hosts must not raise
+    c1 = VLMClient(endpoint_url="http://127.0.0.1:8080/v1/chat/completions")
+    assert c1.endpoint_url == "http://127.0.0.1:8080/v1/chat/completions"
+    c2 = VLMClient(endpoint_url="http://localhost:8080/v1/chat/completions")
+    assert c2.endpoint_url == "http://localhost:8080/v1/chat/completions"
+    c3 = VLMClient(endpoint_url="http://[::1]:8080/v1/chat/completions")
+    assert c3.endpoint_url == "http://[::1]:8080/v1/chat/completions"

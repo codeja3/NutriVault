@@ -681,3 +681,89 @@ def test_api_commit_meal_invalid_timestamp_returns_400(api_instance):
     assert status == 400
     err = json.loads(body)["error"].lower()
     assert "timestamp" in err or "iso" in err
+
+
+def test_api_rejects_empty_names_and_empty_ingredient_lists(api_instance):
+    """Empty strings for profile name/dish name or empty ingredients list must return HTTP 400."""
+    # 1. Blank profile name
+    status1, _ = api_instance.handle_request(
+        method="POST",
+        path="/api/v1/profiles",
+        body=json.dumps({"name": "   ", "profile_type": "standard"}),
+    )
+    assert status1 == 400
+
+    # Create valid profile for meal commit tests
+    _, p_body = api_instance.handle_request(
+        "POST", "/api/v1/profiles", json.dumps({"name": "Valid", "profile_type": "standard"})
+    )
+    p_id = json.loads(p_body)["id"]
+
+    # 2. Empty ingredients list
+    status2, _ = api_instance.handle_request(
+        method="POST",
+        path="/api/v1/meals/commit",
+        body=json.dumps(
+            {
+                "dish_name": "Empty Dish",
+                "ingredients": [],
+                "allocations": [{"profile_id": p_id, "fraction": 1.0}],
+            }
+        ),
+    )
+    assert status2 == 400
+
+    # 3. Blank dish_name
+    status3, _ = api_instance.handle_request(
+        method="POST",
+        path="/api/v1/meals/commit",
+        body=json.dumps(
+            {
+                "dish_name": "   ",
+                "ingredients": [
+                    {
+                        "item_name": "rice",
+                        "fdc_id": 100,
+                        "grams": 100.0,
+                        "calories": 100.0,
+                        "protein_g": 2.0,
+                        "carbs_g": 20.0,
+                        "fat_g": 1.0,
+                        "fiber_g": 1.0,
+                    }
+                ],
+                "allocations": [{"profile_id": p_id, "fraction": 1.0}],
+            }
+        ),
+    )
+    assert status3 == 400
+
+
+def test_api_rolling_analytics_bounds_feeding_intervals_to_days(api_instance):
+    """GET /api/v1/analytics/rolling?days=2 bounds feeding_intervals to the most recent 2 days."""
+    _, p_res = api_instance.handle_request(
+        "POST", "/api/v1/profiles", json.dumps({"name": "WindowUser", "profile_type": "standard"})
+    )
+    p_id = json.loads(p_res)["id"]
+
+    cursor = api_instance.conn.cursor()
+    for day in (25, 26, 27, 28):
+        cursor.execute(
+            """
+            INSERT INTO meal_logs (
+                id, profile_id, meal_type, portion_fraction,
+                calories, protein_g, carbs_g, fat_g, fiber_g, logged_at
+            ) VALUES (?, ?, 'dinner', 1.0, 600.0, 30.0, 60.0, 20.0, 8.0, ?);
+            """,
+            (f"w_{day}", p_id, f"2026-10-{day} 18:00:00"),
+        )
+    api_instance.conn.commit()
+
+    status, body = api_instance.handle_request(
+        method="GET",
+        path=f"/api/v1/analytics/rolling?profile_id={p_id}&days=2",
+    )
+    assert status == 200
+    res_data = json.loads(body)
+    assert len(res_data["feeding_intervals"]) == 2
+    assert [i["date"] for i in res_data["feeding_intervals"]] == ["2026-10-27", "2026-10-28"]

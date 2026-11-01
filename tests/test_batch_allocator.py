@@ -313,3 +313,35 @@ def test_commit_meal_persists_custom_logged_at(db_conn):
     cursor.execute("SELECT logged_at FROM meal_logs WHERE id = ?;", (log_ids[0],))
     row = cursor.fetchone()
     assert row[0] == custom_ts
+
+
+def test_batch_dish_preserves_three_decimal_micronutrient_precision(db_conn):
+    """BatchDish aggregation must preserve 3-decimal micronutrient precision."""
+    allocator = BatchDishAllocator(db_conn)
+    ingredients = [
+        DishIngredient(
+            item_name="nutritional yeast",
+            fdc_id=4001,
+            grams=15.0,
+            calories=60.0,
+            protein_g=8.0,
+            carbs_g=5.0,
+            fat_g=0.5,
+            fiber_g=3.0,
+            micros={"vitamin_b12_mcg": 0.125, "selenium_mcg": 0.044},
+        ),
+        DishIngredient(
+            item_name="hemp seeds",
+            fdc_id=4002,
+            grams=30.0,
+            calories=166.0,
+            protein_g=9.5,
+            carbs_g=2.6,
+            fat_g=14.6,
+            fiber_g=1.2,
+            micros={"vitamin_b12_mcg": 0.003, "selenium_mcg": 0.012},
+        ),
+    ]
+    dish = allocator.create_dish("Superfood Topping", ingredients)
+    assert dish.total_micros["vitamin_b12_mcg"] == 0.128
+    assert dish.total_micros["selenium_mcg"] == 0.056

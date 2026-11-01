@@ -275,3 +275,37 @@ def test_grounding_engine_queries_attached_usda_schema_without_shadowing(tmp_pat
     assert len(matches) == 1
     assert matches[0].fdc_id == 9001
     assert matches[0].description == "Attached Organic Quinoa, cooked"
+
+
+def test_grounding_engine_queries_attached_usda_reference_schema(tmp_path):
+    """GroundingEngine resolves to usda_reference.usda_foods when attached as usda_reference."""
+    from src.db import attach_usda_reference
+
+    main_conn = sqlite3.connect(":memory:")
+    init_db(main_conn)
+
+    usda_path = str(tmp_path / "usda_ref_alt.db")
+    usda_conn = sqlite3.connect(usda_path)
+    init_db(usda_conn)
+    usda_conn.execute(
+        """
+        INSERT INTO usda_foods (
+            fdc_id, description, food_category, preparation_state,
+            calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
+            fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
+        ) VALUES (
+            9002, 'Lentils, mature seeds, cooked, boiled', 'Legumes', 'cooked',
+            116.0, 9.0, 20.1, 0.4, 7.9, '{}'
+        );
+        """
+    )
+    usda_conn.commit()
+    usda_conn.close()
+
+    attach_usda_reference(main_conn, usda_path, schema_name="usda_reference")
+
+    engine = GroundingEngine(main_conn)
+    matches = engine.search_candidates("lentils", limit=1)
+    assert len(matches) == 1
+    assert matches[0].fdc_id == 9002
+    assert matches[0].description == "Lentils, mature seeds, cooked, boiled"

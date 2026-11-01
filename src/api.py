@@ -10,7 +10,7 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from src.advisory import (
     ClinicalAdvisoryViolationError,
@@ -49,7 +49,9 @@ MealType = Literal["breakfast", "lunch", "dinner", "snack", "pre_workout", "post
 
 
 class ProfileCreateRequest(BaseModel):
-    name: str
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    name: str = Field(min_length=1)
     profile_type: ProfileType
     birth_date: str | None = None
     condition_notes: str | None = None
@@ -67,13 +69,17 @@ class TargetEnvelopeRequest(BaseModel):
 
 
 class FitnessAdvisoryRequest(BaseModel):
-    profile_id: str
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    profile_id: str = Field(min_length=1)
     athletic_goal: str = "general"
     weight_kg: float = Field(gt=0.0)
 
 
 class DishIngredientRequest(BaseModel):
-    item_name: str
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    item_name: str = Field(min_length=1)
     fdc_id: int
     grams: float = Field(ge=0.0)
     calories: float = Field(ge=0.0)
@@ -85,7 +91,9 @@ class DishIngredientRequest(BaseModel):
 
 
 class ProfilePortionAllocationRequest(BaseModel):
-    profile_id: str
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    profile_id: str = Field(min_length=1)
     fraction: float
     meal_type: MealType = "dinner"
     logged_at: str | None = None
@@ -102,9 +110,11 @@ class ProfilePortionAllocationRequest(BaseModel):
 
 
 class MealCommitRequest(BaseModel):
-    dish_name: str
-    ingredients: list[DishIngredientRequest]
-    allocations: list[ProfilePortionAllocationRequest]
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    dish_name: str = Field(min_length=1)
+    ingredients: list[DishIngredientRequest] = Field(min_length=1)
+    allocations: list[ProfilePortionAllocationRequest] = Field(min_length=1)
 
 
 def _extract_image_bytearray(raw_body: bytes | bytearray, content_type: str) -> bytearray:
@@ -122,23 +132,31 @@ def _extract_image_bytearray(raw_body: bytes | bytearray, content_type: str) -> 
 
     boundary_bytes = (f"--{boundary}" if boundary else "--").encode("utf-8")
     parts = ba.split(boundary_bytes)
-    for p in parts:
-        if not p or p in (b"--\r\n", b"--", b"\r\n"):
-            continue
-        if b"\r\n\r\n" in p:
-            hdr, body = p.split(b"\r\n\r\n", 1)
-        elif b"\n\n" in p:
-            hdr, body = p.split(b"\n\n", 1)
-        else:
-            continue
+    extracted: bytearray | None = None
+    try:
+        for p in parts:
+            if not p or p in (b"--\r\n", b"--", b"\r\n"):
+                continue
+            if b"\r\n\r\n" in p:
+                hdr, body = p.split(b"\r\n\r\n", 1)
+            elif b"\n\n" in p:
+                hdr, body = p.split(b"\n\n", 1)
+            else:
+                continue
 
-        hdr_str = bytes(hdr).decode("utf-8", errors="ignore").lower()
-        if 'name="image"' in hdr_str or "filename=" in hdr_str or "image/" in hdr_str:
-            if body.endswith(b"\r\n"):
-                body = body[:-2]
-            elif body.endswith(b"\n"):
-                body = body[:-1]
-            return bytearray(body)
+            hdr_str = bytes(hdr).decode("utf-8", errors="ignore").lower()
+            if 'name="image"' in hdr_str or "filename=" in hdr_str or "image/" in hdr_str:
+                if body.endswith(b"\r\n"):
+                    body = body[:-2]
+                elif body.endswith(b"\n"):
+                    body = body[:-1]
+                extracted = bytearray(body)
+                return extracted
+    finally:
+        for p in parts:
+            p[:] = b"\x00" * len(p)
+        if extracted is not None:
+            ba[:] = b"\x00" * len(ba)
 
     return ba
 
@@ -343,7 +361,7 @@ class NutriVaultAPI:
         try:
             image_ba = _extract_image_bytearray(raw_body, content_type)
             try:
-                with EphemeralImageBuffer.from_bytes(bytes(image_ba)) as buffer:
+                with EphemeralImageBuffer.from_bytes(image_ba) as buffer:
                     candidate_items = self.vlm_client.parse_meal_image(buffer)
             finally:
                 image_ba[:] = b"\x00" * len(image_ba)
@@ -418,7 +436,9 @@ class NutriVaultAPI:
 
     def _handle_get_analytics(self, profile_id: str, days: int) -> tuple[int, str]:
         ema_result = self.analytics_engine.calculate_rolling_ema(profile_id=profile_id, days=days)
-        feeding_intervals = calculate_chrononutrition_windows(self.conn, profile_id=profile_id)
+        feeding_intervals = calculate_chrononutrition_windows(
+            self.conn, profile_id=profile_id, days=days
+        )
 
         resp = asdict(ema_result)
         resp["feeding_intervals"] = [asdict(interval) for interval in feeding_intervals]

@@ -45,21 +45,44 @@ def _compute_series_ema(values: list[float], smoothing_weight: float = 2.0) -> f
 def calculate_chrononutrition_windows(
     conn: sqlite3.Connection,
     profile_id: str,
+    days: int | None = None,
 ) -> list[DailyFeedingInterval]:
     """Calculate daily eating windows and inter-day overnight fasting intervals."""
+    if days is not None and days < 1:
+        raise ValueError(f"Parameter 'days' must be an integer >= 1, got {days}.")
+
     cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT DATE(logged_at) as meal_date,
-               MIN(logged_at) as first_ts,
-               MAX(logged_at) as last_ts
-        FROM meal_logs
-        WHERE profile_id = ?
-        GROUP BY DATE(logged_at)
-        ORDER BY meal_date ASC;
-        """,
-        (profile_id,),
-    )
+    if days is not None:
+        cursor.execute(
+            """
+            SELECT meal_date, first_ts, last_ts
+            FROM (
+                SELECT DATE(logged_at) AS meal_date,
+                       MIN(logged_at) AS first_ts,
+                       MAX(logged_at) AS last_ts
+                FROM meal_logs
+                WHERE profile_id = ?
+                GROUP BY DATE(logged_at)
+                ORDER BY meal_date DESC
+                LIMIT ?
+            )
+            ORDER BY meal_date ASC;
+            """,
+            (profile_id, days),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT DATE(logged_at) as meal_date,
+                   MIN(logged_at) as first_ts,
+                   MAX(logged_at) as last_ts
+            FROM meal_logs
+            WHERE profile_id = ?
+            GROUP BY DATE(logged_at)
+            ORDER BY meal_date ASC;
+            """,
+            (profile_id,),
+        )
     rows = cursor.fetchall()
     if not rows:
         return []

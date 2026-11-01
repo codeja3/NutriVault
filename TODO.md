@@ -179,3 +179,33 @@
   - [x] `GREEN`: Extract private `_build_dish`, `_insert_dish`, and `_insert_allocations` helpers to eliminate duplicated SQL and aggregation logic.
   - [x] `REFACTOR`: Format cleanly and run full 100% offline regression check.
 
+---
+
+## Phase 10: Specification Synchronization (v1.1.0) & Pass 3 Remediation
+
+- [x] **Task 10.1: Dual-Schema USDA Resolution (`usda` & `usda_reference`)**
+  - [x] `RED`: Author test in `tests/test_grounding.py` asserting `GroundingEngine` resolves `usda_reference.usda_foods` when attached as `usda_reference`.
+  - [x] `GREEN`: Update `GroundingEngine._load_cache_if_needed` in `src/grounding.py` to support both `"usda"` and `"usda_reference"`.
+  - [x] `REFACTOR`: Keep schema selection strictly static without SQL string formatting.
+
+- [x] **Task 10.2: Loopback Port Separation (`:8081`), VLM Non-Empty Validation & Buffer Context Management**
+  - [x] `RED`: Author tests in `tests/test_vision_pipeline.py` asserting default port `8081` (`http://127.0.0.1:8081/v1/chat/completions`), retry on empty array `[]` or blank `item_name`, and `bytearray` support in `EphemeralImageBuffer.from_bytes`.
+  - [x] `GREEN`: Update `VLMClient` and `EphemeralImageBuffer` in `src/vision_pipeline.py` (using context-managed `with self._stream.getbuffer() as buf:`).
+  - [x] `REFACTOR`: Synchronize `MANUAL.md` and `SPEC.md` with `:8081` loopback inference port.
+
+- [x] **Task 10.3: Consistent 3-Decimal Micronutrient Precision in Batch Dishes**
+  - [x] `RED`: Author test in `tests/test_batch_allocator.py` asserting trace micronutrient sums retain 3-decimal precision.
+  - [x] `GREEN`: Update `BatchDishAllocator._build_dish` in `src/batch_allocator.py` to round `total_micros` to 3 decimal places.
+  - [x] `REFACTOR`: Verify precision parity across `grounding.py` and `batch_allocator.py`.
+
+- [x] **Task 10.4: Window-Bounded Chrononutrition Intervals (`days`)**
+  - [x] `RED`: Author tests in `tests/test_analytics.py` and `tests/test_api.py` asserting `calculate_chrononutrition_windows` bounds results to the most recent `days` logged dates.
+  - [x] `GREEN`: Add optional `days: int | None = None` parameter to `calculate_chrononutrition_windows` in `src/analytics.py` and pass `days=days` in `NutriVaultAPI._handle_get_analytics`.
+  - [x] `REFACTOR`: Ensure chronological `ASC` ordering on bounded window subquery.
+
+- [x] **Task 10.5: Non-Empty Request String/List Validation & Multipart Slice Zeroing**
+  - [x] `RED`: Author tests in `tests/test_api.py` asserting empty/whitespace names or empty ingredient lists return HTTP 400.
+  - [x] `GREEN`: Enforce `ConfigDict(str_strip_whitespace=True)` and `Field(min_length=1)` on Pydantic request models and zero intermediate `bytearray` slices in `_extract_image_bytearray`.
+  - [x] `REFACTOR`: Run full 91-test offline regression suite and `ruff check` / `ruff format`.
+
+

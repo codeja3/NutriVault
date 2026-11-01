@@ -221,3 +221,29 @@ def test_vlm_client_ssrf_non_loopback_rejected():
     assert c2.endpoint_url == "http://localhost:8080/v1/chat/completions"
     c3 = VLMClient(endpoint_url="http://[::1]:8080/v1/chat/completions")
     assert c3.endpoint_url == "http://[::1]:8080/v1/chat/completions"
+
+
+def test_vlm_client_default_port_is_8081_to_avoid_daemon_collision():
+    """VLMClient default endpoint uses port 8081 so it does not collide with daemon port 8080."""
+    client = VLMClient()
+    assert client.endpoint_url == "http://127.0.0.1:8081/v1/chat/completions"
+
+
+def test_vlm_client_rejects_empty_array_and_blank_item_name(mocker):
+    """VLMClient must reject empty candidate list [] or blank item_name and trigger retry."""
+    client = VLMClient()
+
+    empty_resp = {"choices": [{"message": {"content": "[]"}}]}
+    blank_name_resp = {
+        "choices": [{"message": {"content": '[{"item_name": "   ", "estimated_grams": 100.0}]'}}]
+    }
+    mock_post = mocker.patch(
+        "src.vision_pipeline._post_loopback_json",
+        side_effect=[empty_resp, blank_name_resp],
+    )
+
+    with EphemeralImageBuffer.from_bytes(bytearray(b"dummy")) as buf:
+        with pytest.raises(VLMInvalidJSONError):
+            client.parse_meal_image(buf)
+
+    assert mock_post.call_count == 2

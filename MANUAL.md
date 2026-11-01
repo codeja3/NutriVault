@@ -76,10 +76,10 @@ If you want to run multimodal vision extraction locally, launch `llama-server` o
 # Example for Tier 2 mid-spec (e.g. Qwen2.5-VL 7B):
 ./llama-server -m ./models/qwen2.5-vl-7b-instruct-q4_k_m.gguf \
   --mmproj ./models/qwen2.5-vl-7b-mmproj-f16.gguf \
-  --port 8080 --host 127.0.0.1
+  --port 8081 --host 127.0.0.1
 ```
 
-NutriVault automatically points to `http://127.0.0.1:8080/v1/chat/completions` to extract food entities and portions.
+NutriVault automatically points to `http://127.0.0.1:8081/v1/chat/completions` to extract food entities and portions.
 
 ---
 

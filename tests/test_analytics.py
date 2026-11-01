@@ -239,3 +239,12 @@ def test_calculate_rolling_ema_rejects_non_positive_days():
 
     with pytest.raises(ValueError, match="days"):
         analytics.calculate_rolling_ema(profile_id=profile.id, days=-3)
+
+
+def test_calculate_chrononutrition_windows_bounded_by_days(populated_analytics_db):
+    """calculate_chrononutrition_windows with days=3 returns only the most recent 3 logged days."""
+    conn, profile_id = populated_analytics_db
+    intervals = calculate_chrononutrition_windows(conn, profile_id=profile_id, days=3)
+    assert len(intervals) == 3
+    # populated_analytics_db has 7 days (2026-10-24 .. 2026-10-30); last 3 are 28, 29, 30
+    assert [i.date for i in intervals] == ["2026-10-28", "2026-10-29", "2026-10-30"]

@@ -83,7 +83,7 @@ class BatchDishAllocator:
         total_micros: dict[str, float] = {}
         for ing in ingredients:
             for m_key, m_val in ing.micros.items():
-                total_micros[m_key] = round(total_micros.get(m_key, 0.0) + m_val, 2)
+                total_micros[m_key] = round(total_micros.get(m_key, 0.0) + m_val, 3)
 
         raw_ingredients_data = [asdict(ing) for ing in ingredients]
         raw_json = json.dumps(raw_ingredients_data)

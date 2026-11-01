@@ -109,24 +109,43 @@ class GroundingEngine:
         cursor = self.conn.cursor()
         cursor.execute("PRAGMA database_list;")
         attached_schemas = {row[1] for row in cursor.fetchall()}
-        use_attached_usda = False
+        active_schema = "main"
 
-        if "usda" in attached_schemas:
-            cursor.execute(
-                "SELECT COUNT(*) FROM usda.sqlite_master WHERE type='table' AND name='usda_foods';"
-            )
-            if cursor.fetchone()[0] > 0:
-                cursor.execute("SELECT COUNT(*) FROM main.usda_foods;")
-                if cursor.fetchone()[0] == 0:
-                    use_attached_usda = True
+        cursor.execute("SELECT COUNT(*) FROM main.usda_foods;")
+        main_count = cursor.fetchone()[0]
 
-        if use_attached_usda:
+        if main_count == 0:
+            if "usda" in attached_schemas:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM usda.sqlite_master "
+                    "WHERE type='table' AND name='usda_foods';"
+                )
+                if cursor.fetchone()[0] > 0:
+                    active_schema = "usda"
+            elif "usda_reference" in attached_schemas:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM usda_reference.sqlite_master "
+                    "WHERE type='table' AND name='usda_foods';"
+                )
+                if cursor.fetchone()[0] > 0:
+                    active_schema = "usda_reference"
+
+        if active_schema == "usda":
             cursor.execute(
                 """
                 SELECT fdc_id, description, food_category, preparation_state,
                        calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
                        fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
                 FROM usda.usda_foods;
+                """
+            )
+        elif active_schema == "usda_reference":
+            cursor.execute(
+                """
+                SELECT fdc_id, description, food_category, preparation_state,
+                       calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
+                       fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
+                FROM usda_reference.usda_foods;
                 """
             )
         else:

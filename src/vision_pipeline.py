@@ -65,7 +65,7 @@ class EphemeralImageBuffer:
     @classmethod
     def from_bytes(
         cls,
-        image_bytes: bytes,
+        image_bytes: bytes | bytearray | memoryview,
         max_size_bytes: int = MAX_IMAGE_SIZE_BYTES,
     ) -> "EphemeralImageBuffer":
         if len(image_bytes) > max_size_bytes:
@@ -81,7 +81,8 @@ class EphemeralImageBuffer:
     def size(self) -> int:
         if self._is_purged or self._stream is None:
             return 0
-        return self._stream.getbuffer().nbytes
+        with self._stream.getbuffer() as buf:
+            return buf.nbytes
 
     def to_base64(self) -> str:
         """Encode volatile stream to base64 in RAM without touching storage."""
@@ -96,9 +97,8 @@ class EphemeralImageBuffer:
             return
         if self._stream is not None:
             try:
-                buf = self._stream.getbuffer()
-                buf[:] = b"\x00" * len(buf)
-                buf.release()
+                with self._stream.getbuffer() as buf:
+                    buf[:] = b"\x00" * len(buf)
             except (ValueError, BufferError):
                 pass
             self._stream.seek(0)
@@ -159,7 +159,7 @@ def _post_loopback_json(
 class VLMClient:
     """Embedded loopback client communicating with local llama.cpp /v1/chat/completions."""
 
-    def __init__(self, endpoint_url: str = "http://127.0.0.1:8080/v1/chat/completions"):
+    def __init__(self, endpoint_url: str = "http://127.0.0.1:8081/v1/chat/completions"):
         parsed = urllib.parse.urlparse(endpoint_url)
         hostname = (parsed.hostname or "").lower()
         if hostname not in {"127.0.0.1", "localhost", "::1"}:
@@ -206,17 +206,20 @@ class VLMClient:
                 cleaned_json = clean_vlm_json_output(content)
                 parsed_data = json.loads(cleaned_json)
 
-                if not isinstance(parsed_data, list):
-                    raise ValueError("VLM response must be a JSON array")
+                if not isinstance(parsed_data, list) or len(parsed_data) == 0:
+                    raise ValueError("VLM response must be a non-empty JSON array")
 
                 candidates: list[ExtractedCandidateItem] = []
                 for item in parsed_data:
+                    item_name = str(item["item_name"]).strip()
+                    if not item_name:
+                        raise ValueError("Candidate item_name must be non-empty")
                     grams = float(item["estimated_grams"])
                     if grams <= 0.0:
                         raise ValueError(f"Portion weight must be > 0.0 grams, got {grams}")
                     candidates.append(
                         ExtractedCandidateItem(
-                            item_name=str(item["item_name"]).strip(),
+                            item_name=item_name,
                             estimated_grams=grams,
                         )
                     )

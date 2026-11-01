@@ -45,21 +45,44 @@ def _compute_series_ema(values: list[float], smoothing_weight: float = 2.0) -> f
 def calculate_chrononutrition_windows(
     conn: sqlite3.Connection,
     profile_id: str,
+    days: int | None = None,
 ) -> list[DailyFeedingInterval]:
     """Calculate daily eating windows and inter-day overnight fasting intervals."""
+    if days is not None and days < 1:
+        raise ValueError(f"Parameter 'days' must be an integer >= 1, got {days}.")
+
     cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT DATE(logged_at) as meal_date,
-               MIN(logged_at) as first_ts,
-               MAX(logged_at) as last_ts
-        FROM meal_logs
-        WHERE profile_id = ?
-        GROUP BY DATE(logged_at)
-        ORDER BY meal_date ASC;
-        """,
-        (profile_id,),
-    )
+    if days is not None:
+        cursor.execute(
+            """
+            SELECT meal_date, first_ts, last_ts
+            FROM (
+                SELECT DATE(logged_at) AS meal_date,
+                       MIN(logged_at) AS first_ts,
+                       MAX(logged_at) AS last_ts
+                FROM meal_logs
+                WHERE profile_id = ?
+                GROUP BY DATE(logged_at)
+                ORDER BY meal_date DESC
+                LIMIT ?
+            )
+            ORDER BY meal_date ASC;
+            """,
+            (profile_id, days),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT DATE(logged_at) as meal_date,
+                   MIN(logged_at) as first_ts,
+                   MAX(logged_at) as last_ts
+            FROM meal_logs
+            WHERE profile_id = ?
+            GROUP BY DATE(logged_at)
+            ORDER BY meal_date ASC;
+            """,
+            (profile_id,),
+        )
     rows = cursor.fetchall()
     if not rows:
         return []
@@ -79,9 +102,11 @@ def calculate_chrononutrition_windows(
         # Overnight fast: delta from previous day's last meal to current day's first meal
         fast_hours = None
         if prev_last_dt is not None:
-            fast_seconds = (first_dt - prev_last_dt).total_seconds()
-            if fast_seconds > 0:
-                fast_hours = round(fast_seconds / 3600.0, 2)
+            day_diff = (first_dt.date() - prev_last_dt.date()).days
+            if day_diff == 1:
+                fast_seconds = (first_dt - prev_last_dt).total_seconds()
+                if fast_seconds > 0:
+                    fast_hours = round(fast_seconds / 3600.0, 2)
 
         intervals.append(
             DailyFeedingInterval(
@@ -106,21 +131,27 @@ class AnalyticsEngine:
 
     def calculate_rolling_ema(self, profile_id: str, days: int = 7) -> RollingEMAResult:
         """Calculate EMA for calories and macronutrients over rolling days."""
+        if days < 1:
+            raise ValueError(f"Parameter 'days' must be an integer >= 1, got {days}.")
         cursor = self.conn.cursor()
 
         cursor.execute(
             """
-            SELECT DATE(logged_at) AS meal_date,
-                   SUM(calories) AS day_calories,
-                   SUM(protein_g) AS day_protein,
-                   SUM(carbs_g) AS day_carbs,
-                   SUM(fat_g) AS day_fat,
-                   SUM(fiber_g) AS day_fiber
-            FROM meal_logs
-            WHERE profile_id = ?
-            GROUP BY DATE(logged_at)
-            ORDER BY meal_date ASC
-            LIMIT ?;
+            SELECT meal_date, day_calories, day_protein, day_carbs, day_fat, day_fiber
+            FROM (
+                SELECT DATE(logged_at) AS meal_date,
+                       SUM(calories) AS day_calories,
+                       SUM(protein_g) AS day_protein,
+                       SUM(carbs_g) AS day_carbs,
+                       SUM(fat_g) AS day_fat,
+                       SUM(fiber_g) AS day_fiber
+                FROM meal_logs
+                WHERE profile_id = ?
+                GROUP BY DATE(logged_at)
+                ORDER BY meal_date DESC
+                LIMIT ?
+            )
+            ORDER BY meal_date ASC;
             """,
             (profile_id, days),
         )

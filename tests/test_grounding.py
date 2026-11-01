@@ -177,6 +177,25 @@ def test_calculate_linear_nutrients():
     assert nutrients_50g.micronutrients["potassium_mg"] == 39.5
 
 
+def test_calculate_linear_nutrients_rejects_negative_grams():
+    """calculate_linear_nutrients must reject negative gram values."""
+    match = GroundingMatch(
+        fdc_id=1001,
+        description="Rice, brown, cooked",
+        food_category="Cereal Grains",
+        preparation_state="cooked",
+        calories_per_100g=112.0,
+        protein_g_per_100g=2.3,
+        carbs_g_per_100g=23.5,
+        fat_g_per_100g=0.8,
+        fiber_g_per_100g=1.6,
+        micros_per_100g={},
+        score=1.0,
+    )
+    with pytest.raises(ValueError, match="non-negative"):
+        calculate_linear_nutrients(match, grams=-50.0)
+
+
 def test_resolve_food_item_end_to_end(populated_usda_conn):
     """Verify end-to-end resolution from extracted item and mass to grounded nutrient profile."""
     engine = GroundingEngine(populated_usda_conn)
@@ -195,3 +214,98 @@ def test_resolve_food_item_end_to_end(populated_usda_conn):
     assert resolved.nutrients.protein_g == round(2.4 * 1.5, 2)
     assert resolved.nutrients.carbs_g == round(7.2 * 1.5, 2)
     assert resolved.nutrients.micronutrients["calcium_mg"] == round(40.0 * 1.5, 2)
+
+
+def test_grounding_engine_token_cache(populated_usda_conn):
+    """GroundingEngine caches pre-tokenized USDA entries in RAM to avoid table scans."""
+    engine = GroundingEngine(populated_usda_conn)
+    assert engine.is_cached is False
+
+    # First search populates cache
+    m1 = engine.search_candidates("brown rice", limit=3)
+    assert len(m1) > 0
+    assert engine.is_cached is True
+    cache_len = len(engine._cache)
+    assert cache_len > 0
+
+    # Subsequent search uses cached tokens
+    m2 = engine.search_candidates("cooked brown rice", limit=3)
+    assert len(m2) > 0
+    assert engine.is_cached is True
+
+    # Explicit cache invalidation clears cache
+    engine.invalidate_cache()
+    assert engine.is_cached is False
+    m3 = engine.search_candidates("raw brown rice", limit=3)
+    assert len(m3) > 0
+    assert engine.is_cached is True
+
+
+def test_grounding_engine_queries_attached_usda_schema_without_shadowing(tmp_path):
+    """GroundingEngine resolves to usda.usda_foods when attached, avoiding main table shadowing."""
+    from src.db import attach_usda_reference
+
+    # Main database has empty usda_foods table from init_db
+    main_conn = sqlite3.connect(":memory:")
+    init_db(main_conn)
+
+    # Secondary USDA database has populated usda_foods
+    usda_path = str(tmp_path / "usda_reference.db")
+    usda_conn = sqlite3.connect(usda_path)
+    init_db(usda_conn)
+    usda_conn.execute(
+        """
+        INSERT INTO usda_foods (
+            fdc_id, description, food_category, preparation_state,
+            calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
+            fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
+        ) VALUES (
+            9001, 'Attached Organic Quinoa, cooked', 'Grains', 'cooked',
+            120.0, 4.4, 21.3, 1.9, 2.8, '{}'
+        );
+        """
+    )
+    usda_conn.commit()
+    usda_conn.close()
+
+    attach_usda_reference(main_conn, usda_path, schema_name="usda")
+
+    engine = GroundingEngine(main_conn)
+    matches = engine.search_candidates("quinoa", limit=1)
+    assert len(matches) == 1
+    assert matches[0].fdc_id == 9001
+    assert matches[0].description == "Attached Organic Quinoa, cooked"
+
+
+def test_grounding_engine_queries_attached_usda_reference_schema(tmp_path):
+    """GroundingEngine resolves to usda_reference.usda_foods when attached as usda_reference."""
+    from src.db import attach_usda_reference
+
+    main_conn = sqlite3.connect(":memory:")
+    init_db(main_conn)
+
+    usda_path = str(tmp_path / "usda_ref_alt.db")
+    usda_conn = sqlite3.connect(usda_path)
+    init_db(usda_conn)
+    usda_conn.execute(
+        """
+        INSERT INTO usda_foods (
+            fdc_id, description, food_category, preparation_state,
+            calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
+            fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
+        ) VALUES (
+            9002, 'Lentils, mature seeds, cooked, boiled', 'Legumes', 'cooked',
+            116.0, 9.0, 20.1, 0.4, 7.9, '{}'
+        );
+        """
+    )
+    usda_conn.commit()
+    usda_conn.close()
+
+    attach_usda_reference(main_conn, usda_path, schema_name="usda_reference")
+
+    engine = GroundingEngine(main_conn)
+    matches = engine.search_candidates("lentils", limit=1)
+    assert len(matches) == 1
+    assert matches[0].fdc_id == 9002
+    assert matches[0].description == "Lentils, mature seeds, cooked, boiled"

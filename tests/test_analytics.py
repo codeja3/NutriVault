@@ -149,3 +149,102 @@ def test_calculate_chrononutrition_windows(populated_analytics_db):
     assert d2.eating_window_hours == 10.0
     # Fast from 2026-10-25 18:00 to 2026-10-26 09:00 is exactly 15 hours
     assert d2.overnight_fast_hours == 15.0
+
+
+def test_calculate_rolling_ema_takes_most_recent_days():
+    """calculate_rolling_ema(days=7) must evaluate the most recent 7 days, not the oldest 7 days."""
+    conn = sqlite3.connect(":memory:")
+    init_db(conn)
+    repo = ProfileRepository(conn)
+    profile = repo.create_profile(name="OldestVsNewest", profile_type="standard")
+
+    cursor = conn.cursor()
+    # Insert 14 consecutive days of meals:
+    # Days 1..7 (older): 1000 calories/day
+    # Days 8..14 (newer): 3000 calories/day
+    base_time = datetime(2026, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
+    for day in range(14):
+        logged_at = (base_time + timedelta(days=day)).strftime("%Y-%m-%d %H:%M:%S")
+        cals = 1000.0 if day < 7 else 3000.0
+        cursor.execute(
+            """
+            INSERT INTO meal_logs (
+                id, profile_id, meal_type, portion_fraction,
+                calories, protein_g, carbs_g, fat_g, fiber_g, logged_at
+            ) VALUES (?, ?, 'dinner', 1.0, ?, 100.0, 100.0, 50.0, 20.0, ?);
+            """,
+            (f"m_{day}", profile.id, cals, logged_at),
+        )
+    conn.commit()
+
+    analytics = AnalyticsEngine(conn)
+    result = analytics.calculate_rolling_ema(profile_id=profile.id, days=7)
+    # The EMA for days 8..14 (all 3000 cal) should be 3000.0.
+    # If the bug is present (taking days 1..7), it would be 1000.0!
+    assert result.calories_ema == 3000.0
+
+
+def test_calculate_chrononutrition_windows_non_consecutive_days():
+    """Overnight fast should only be computed across consecutive calendar days (day_diff == 1)."""
+    conn = sqlite3.connect(":memory:")
+    init_db(conn)
+    repo = ProfileRepository(conn)
+    profile = repo.create_profile(name="Intermittent", profile_type="standard")
+
+    cursor = conn.cursor()
+    # Day 1: Monday 2026-10-25 18:00
+    cursor.execute(
+        """
+        INSERT INTO meal_logs (
+            id, profile_id, meal_type, portion_fraction,
+            calories, protein_g, carbs_g, fat_g, fiber_g, logged_at
+        ) VALUES (
+            'gap_m1', ?, 'dinner', 1.0, 500.0, 30.0, 50.0, 15.0, 5.0, '2026-10-25 18:00:00'
+        );
+        """,
+        (profile.id,),
+    )
+    # Day 2: SKIPPED (Tuesday 2026-10-26 has no data)
+    # Day 3: Wednesday 2026-10-27 09:00
+    cursor.execute(
+        """
+        INSERT INTO meal_logs (
+            id, profile_id, meal_type, portion_fraction,
+            calories, protein_g, carbs_g, fat_g, fiber_g, logged_at
+        ) VALUES (
+            'gap_m2', ?, 'breakfast', 1.0, 400.0, 20.0, 40.0, 10.0, 5.0, '2026-10-27 09:00:00'
+        );
+        """,
+        (profile.id,),
+    )
+    conn.commit()
+
+    intervals = calculate_chrononutrition_windows(conn, profile_id=profile.id)
+    assert len(intervals) == 2
+    # Wednesday must NOT calculate a 39h overnight fast from Monday
+    assert intervals[1].date == "2026-10-27"
+    assert intervals[1].overnight_fast_hours is None
+
+
+def test_calculate_rolling_ema_rejects_non_positive_days():
+    """calculate_rolling_ema must raise ValueError if days < 1."""
+    conn = sqlite3.connect(":memory:")
+    init_db(conn)
+    repo = ProfileRepository(conn)
+    profile = repo.create_profile(name="TestDays", profile_type="standard")
+    analytics = AnalyticsEngine(conn)
+
+    with pytest.raises(ValueError, match="days"):
+        analytics.calculate_rolling_ema(profile_id=profile.id, days=0)
+
+    with pytest.raises(ValueError, match="days"):
+        analytics.calculate_rolling_ema(profile_id=profile.id, days=-3)
+
+
+def test_calculate_chrononutrition_windows_bounded_by_days(populated_analytics_db):
+    """calculate_chrononutrition_windows with days=3 returns only the most recent 3 logged days."""
+    conn, profile_id = populated_analytics_db
+    intervals = calculate_chrononutrition_windows(conn, profile_id=profile_id, days=3)
+    assert len(intervals) == 3
+    # populated_analytics_db has 7 days (2026-10-24 .. 2026-10-30); last 3 are 28, 29, 30
+    assert [i.date for i in intervals] == ["2026-10-28", "2026-10-29", "2026-10-30"]

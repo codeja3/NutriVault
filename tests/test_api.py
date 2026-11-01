@@ -90,6 +90,110 @@ def test_api_put_target_envelope(api_instance):
     assert env_data["micronutrients"]["calcium_mg"] == 1000.0
 
 
+def test_api_put_target_envelope_unknown_profile(api_instance):
+    """PUT /api/v1/profiles/{id}/targets with unknown profile returns 404."""
+    status, body = api_instance.handle_request(
+        method="PUT",
+        path="/api/v1/profiles/unknown-uuid/targets",
+        body=json.dumps(
+            {
+                "calories_target": 2000,
+                "protein_g_target": 150.0,
+                "carbs_g_target": 200.0,
+                "fat_g_target": 65.0,
+                "fiber_g_target": 30.0,
+            }
+        ),
+    )
+    assert status == 404
+    data = json.loads(body)
+    assert "not found" in data["error"].lower()
+
+
+def test_api_put_target_envelope_ai_chronic_condition_restriction(api_instance):
+    """PUT /api/v1/profiles/{id}/targets rejects AI targets on chronic condition profiles (403)."""
+    _, p_body = api_instance.handle_request(
+        method="POST",
+        path="/api/v1/profiles",
+        body=json.dumps({"name": "Patient", "profile_type": "chronic_condition"}),
+    )
+    p_id = json.loads(p_body)["id"]
+
+    target_payload = {
+        "calories_target": 2100,
+        "protein_g_target": 120.0,
+        "carbs_g_target": 220.0,
+        "fat_g_target": 60.0,
+        "fiber_g_target": 25.0,
+        "is_ai_generated": True,
+    }
+    status, body = api_instance.handle_request(
+        method="PUT",
+        path=f"/api/v1/profiles/{p_id}/targets",
+        body=json.dumps(target_payload),
+    )
+    assert status == 403
+    err_data = json.loads(body)
+    assert err_data["error_code"] == "ERR_CLINICAL_AI_RESTRICTED"
+
+
+def test_api_put_target_envelope_ai_athletic_acknowledgment(api_instance):
+    """Athletic AI-generated target commits require acknowledged: true."""
+    _, p_body = api_instance.handle_request(
+        method="POST",
+        path="/api/v1/profiles",
+        body=json.dumps({"name": "Athlete1", "profile_type": "athletic"}),
+    )
+    p_id = json.loads(p_body)["id"]
+
+    unack_payload = {
+        "calories_target": 2800,
+        "protein_g_target": 180.0,
+        "carbs_g_target": 350.0,
+        "fat_g_target": 70.0,
+        "fiber_g_target": 40.0,
+        "is_ai_generated": True,
+        "acknowledged": False,
+    }
+    status, body = api_instance.handle_request(
+        method="PUT",
+        path=f"/api/v1/profiles/{p_id}/targets",
+        body=json.dumps(unack_payload),
+    )
+    assert status == 400
+    assert "acknowledgment" in json.loads(body)["error"].lower()
+
+    # With acknowledged: true, commit succeeds
+    ack_payload = {**unack_payload, "acknowledged": True}
+    status_ok, body_ok = api_instance.handle_request(
+        method="PUT",
+        path=f"/api/v1/profiles/{p_id}/targets",
+        body=json.dumps(ack_payload),
+    )
+    assert status_ok == 200
+    assert json.loads(body_ok)["calories_target"] == 2800
+
+
+def test_api_missing_fields_return_400_bad_request(api_instance):
+    """Missing required keys in JSON body must return 400 Bad Request, not 404."""
+    # POST /api/v1/profiles with empty dict
+    status, body = api_instance.handle_request(
+        method="POST",
+        path="/api/v1/profiles",
+        body=json.dumps({}),
+    )
+    assert status == 400
+    assert "field required" in body.lower() or "missing" in body.lower() or "error" in body.lower()
+
+    # POST /api/v1/meals/commit with missing fields
+    status2, body2 = api_instance.handle_request(
+        method="POST",
+        path="/api/v1/meals/commit",
+        body=json.dumps({"dish_name": "Incomplete"}),
+    )
+    assert status2 == 400
+
+
 def test_api_advisory_fitness_targets_success(api_instance):
     """POST /api/v1/advisory/fitness-targets generates targets and advisory wire."""
     _, p_body = api_instance.handle_request(
@@ -255,6 +359,66 @@ def test_api_commit_meal_invalid_portion_sum(api_instance):
     res_data = json.loads(body)
     assert res_data["error_code"] == "ERR_INVALID_PORTION_SUM"
 
+    # Must NOT leave an orphaned dish in the database
+    cursor = api_instance.conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM dishes;")
+    assert cursor.fetchone()[0] == 0
+
+
+def test_api_parse_image_multipart_framing(api_instance, mocker):
+    """POST /api/v1/meals/parse-image must strip multipart boundary framing to raw bytes."""
+    boundary = "----WebKitFormBoundaryXyZ123"
+    actual_image_data = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR_real_image_bytes"
+    multipart_body = (
+        (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="image"; filename="meal.png"\r\n'
+            f"Content-Type: image/png\r\n\r\n"
+        ).encode("utf-8")
+        + actual_image_data
+        + f"\r\n--{boundary}--\r\n".encode("utf-8")
+    )
+
+    captured_bytes = None
+
+    def mock_parse(buf):
+        nonlocal captured_bytes
+        captured_bytes = buf._stream.getvalue()
+        return [ExtractedCandidateItem(item_name="brown rice", estimated_grams=150.0)]
+
+    mocker.patch.object(api_instance.vlm_client, "parse_meal_image", side_effect=mock_parse)
+
+    status, body = api_instance.handle_request(
+        method="POST",
+        path="/api/v1/meals/parse-image",
+        raw_body=multipart_body,
+        content_type=f"multipart/form-data; boundary={boundary}",
+    )
+    assert status == 200
+    # Captured image bytes in memory must be the raw image bytes without multipart headers
+    assert captured_bytes == actual_image_data
+
+
+def test_api_parse_image_zeroes_mutable_bytearray_input(api_instance, mocker):
+    """Passing a mutable bytearray to parse-image must zero out the buffer in memory upon exit."""
+    mocker.patch.object(
+        api_instance.vlm_client,
+        "parse_meal_image",
+        return_value=[ExtractedCandidateItem(item_name="rice", estimated_grams=100.0)],
+    )
+    raw_payload = bytearray(b"sensitive_image_bytes_to_be_zeroed_1234567890")
+    orig_len = len(raw_payload)
+
+    status, _ = api_instance.handle_request(
+        method="POST",
+        path="/api/v1/meals/parse-image",
+        raw_body=raw_payload,
+        content_type="image/jpeg",
+    )
+    assert status == 200
+    # The bytearray in memory must be explicitly overwritten with 0x00
+    assert bytes(raw_payload) == b"\x00" * orig_len
+
 
 def test_api_get_rolling_analytics(api_instance):
     """GET /api/v1/analytics/rolling returns 7-day EMA, deltas, and chrononutrition windows."""
@@ -288,3 +452,318 @@ def test_api_get_rolling_analytics(api_instance):
     assert "feeding_intervals" in res_data
     assert len(res_data["feeding_intervals"]) == 1
     assert res_data["feeding_intervals"][0]["date"] == "2026-10-31"
+
+
+def test_api_internal_server_error_sanitization(api_instance, mocker):
+    """500 Internal Server Error must not leak raw exceptions or database internals."""
+    err = sqlite3.OperationalError("syntax error in SQL: table secret_users not found")
+    mocker.patch.object(api_instance.repo, "list_profiles", side_effect=err)
+    status, body = api_instance.handle_request(method="GET", path="/api/v1/profiles")
+    assert status == 500
+    data = json.loads(body)
+    assert data == {"error": "Internal server error."}
+    assert "secret_users" not in body
+    assert "syntax error" not in body
+
+
+def test_http_handler_dispatch(api_instance):
+    """NutriVaultHTTPHandler properly handles incoming HTTP requests via handle_request."""
+    import io
+    from unittest.mock import Mock
+
+    from src.api import NutriVaultHTTPHandler
+
+    handler = NutriVaultHTTPHandler.__new__(NutriVaultHTTPHandler)
+    handler.api = api_instance
+    handler.command = "GET"
+    handler.path = "/api/v1/hardware"
+    handler.headers = {"Content-Length": "0"}
+    handler.rfile = io.BytesIO()
+    handler.wfile = io.BytesIO()
+    handler.request_version = "HTTP/1.1"
+
+    handler.send_response = Mock()
+    handler.send_header = Mock()
+    handler.end_headers = Mock()
+
+    handler.do_GET()
+
+    handler.send_response.assert_called_once_with(200)
+    output = handler.wfile.getvalue().decode("utf-8")
+    assert "active_tier_ceiling" in output
+
+
+def test_http_handler_malformed_content_length_returns_400(api_instance):
+    """NutriVaultHTTPHandler rejects malformed Content-Length header with HTTP 400."""
+    import io
+    from unittest.mock import Mock
+
+    from src.api import NutriVaultHTTPHandler
+
+    handler = NutriVaultHTTPHandler.__new__(NutriVaultHTTPHandler)
+    handler.api = api_instance
+    handler.command = "POST"
+    handler.path = "/api/v1/profiles"
+    handler.headers = {"Content-Length": "invalid_number"}
+    handler.rfile = io.BytesIO(b"some_body")
+    handler.wfile = io.BytesIO()
+    handler.request_version = "HTTP/1.1"
+
+    handler.send_response = Mock()
+    handler.send_header = Mock()
+    handler.end_headers = Mock()
+
+    handler.do_POST()
+
+    handler.send_response.assert_called_once_with(400)
+    output = json.loads(handler.wfile.getvalue().decode("utf-8"))
+    assert "content-length" in output["error"].lower()
+
+
+def test_http_handler_oversized_content_length_returns_413_without_reading(api_instance):
+    """NutriVaultHTTPHandler rejects Content-Length > 15 MB with 413 without reading payload."""
+    import io
+    from unittest.mock import Mock
+
+    from src.api import NutriVaultHTTPHandler
+
+    handler = NutriVaultHTTPHandler.__new__(NutriVaultHTTPHandler)
+    handler.api = api_instance
+    handler.command = "POST"
+    handler.path = "/api/v1/meals/parse-image"
+    # 50 MB declared Content-Length
+    handler.headers = {
+        "Content-Length": "52428800",
+        "Content-Type": "multipart/form-data; boundary=xyz",
+    }
+    rfile_mock = Mock()
+    handler.rfile = rfile_mock
+    handler.wfile = io.BytesIO()
+    handler.request_version = "HTTP/1.1"
+
+    handler.send_response = Mock()
+    handler.send_header = Mock()
+    handler.end_headers = Mock()
+
+    handler.do_POST()
+
+    handler.send_response.assert_called_once_with(413)
+    # Ensure server never attempted to allocate 50 MB by calling rfile.read(...)
+    rfile_mock.read.assert_not_called()
+    output = json.loads(handler.wfile.getvalue().decode("utf-8"))
+    assert output["error_code"] == "ERR_IMAGE_PAYLOAD_TOO_LARGE"
+
+
+def test_api_thread_safety_lock(api_instance):
+    """NutriVaultAPI must possess a threading lock to protect SQLite connections."""
+    import threading
+
+    assert hasattr(api_instance, "_lock")
+    assert isinstance(api_instance._lock, type(threading.Lock()))
+
+
+def test_api_create_profile_invalid_type_returns_400(api_instance):
+    """POST /api/v1/profiles with invalid profile_type returns 400 Bad Request."""
+    status, body = api_instance.handle_request(
+        method="POST",
+        path="/api/v1/profiles",
+        body=json.dumps({"name": "Invalid", "profile_type": "alien_profile"}),
+    )
+    assert status == 400
+    assert "profile_type" in body.lower() or "input should be" in body.lower()
+
+
+def test_api_commit_meal_invalid_meal_type_returns_400(api_instance):
+    """POST /api/v1/meals/commit with invalid meal_type returns 400 Bad Request."""
+    _, p_body = api_instance.handle_request(
+        "POST", "/api/v1/profiles", json.dumps({"name": "User", "profile_type": "standard"})
+    )
+    p_id = json.loads(p_body)["id"]
+
+    payload = {
+        "dish_name": "Midnight Snack",
+        "ingredients": [
+            {
+                "item_name": "apple",
+                "fdc_id": 100,
+                "grams": 100.0,
+                "calories": 50.0,
+                "protein_g": 0.5,
+                "carbs_g": 12.0,
+                "fat_g": 0.2,
+                "fiber_g": 2.0,
+                "micros": {},
+            }
+        ],
+        "allocations": [{"profile_id": p_id, "fraction": 1.0, "meal_type": "invalid_meal_type"}],
+    }
+    status, body = api_instance.handle_request(
+        method="POST",
+        path="/api/v1/meals/commit",
+        body=json.dumps(payload),
+    )
+    assert status == 400
+
+
+def test_api_integrity_error_mapped_to_400_not_500(api_instance, mocker):
+    """Database IntegrityError must return HTTP 400 Bad Request instead of HTTP 500."""
+    mocker.patch.object(
+        api_instance.repo,
+        "create_profile",
+        side_effect=sqlite3.IntegrityError("CHECK constraint failed: profiles"),
+    )
+    status, body = api_instance.handle_request(
+        method="POST",
+        path="/api/v1/profiles",
+        body=json.dumps({"name": "Test", "profile_type": "standard"}),
+    )
+    assert status == 400
+    data = json.loads(body)
+    assert "integrity violation" in data["error"].lower()
+
+
+def test_api_analytics_negative_or_zero_days_returns_400(api_instance):
+    """GET /api/v1/analytics/rolling with days <= 0 must return HTTP 400 Bad Request."""
+    _, p_body = api_instance.handle_request(
+        "POST", "/api/v1/profiles", json.dumps({"name": "User", "profile_type": "standard"})
+    )
+    p_id = json.loads(p_body)["id"]
+
+    status1, body1 = api_instance.handle_request(
+        method="GET", path=f"/api/v1/analytics/rolling?profile_id={p_id}&days=0"
+    )
+    assert status1 == 400
+    assert "days" in json.loads(body1)["error"].lower()
+
+    status2, body2 = api_instance.handle_request(
+        method="GET", path=f"/api/v1/analytics/rolling?profile_id={p_id}&days=-5"
+    )
+    assert status2 == 400
+    assert "days" in json.loads(body2)["error"].lower()
+
+
+def test_api_commit_meal_invalid_timestamp_returns_400(api_instance):
+    """POST /api/v1/meals/commit with malformed ISO-8601 logged_at returns HTTP 400."""
+    _, p_body = api_instance.handle_request(
+        "POST", "/api/v1/profiles", json.dumps({"name": "User", "profile_type": "standard"})
+    )
+    p_id = json.loads(p_body)["id"]
+
+    payload = {
+        "dish_name": "Lunch Dish",
+        "ingredients": [
+            {
+                "item_name": "rice",
+                "fdc_id": 100,
+                "grams": 100.0,
+                "calories": 100.0,
+                "protein_g": 2.0,
+                "carbs_g": 20.0,
+                "fat_g": 1.0,
+                "fiber_g": 1.0,
+                "micros": {},
+            }
+        ],
+        "allocations": [
+            {
+                "profile_id": p_id,
+                "fraction": 1.0,
+                "meal_type": "lunch",
+                "logged_at": "invalid-datetime-string",
+            }
+        ],
+    }
+    status, body = api_instance.handle_request(
+        method="POST",
+        path="/api/v1/meals/commit",
+        body=json.dumps(payload),
+    )
+    assert status == 400
+    err = json.loads(body)["error"].lower()
+    assert "timestamp" in err or "iso" in err
+
+
+def test_api_rejects_empty_names_and_empty_ingredient_lists(api_instance):
+    """Empty strings for profile name/dish name or empty ingredients list must return HTTP 400."""
+    # 1. Blank profile name
+    status1, _ = api_instance.handle_request(
+        method="POST",
+        path="/api/v1/profiles",
+        body=json.dumps({"name": "   ", "profile_type": "standard"}),
+    )
+    assert status1 == 400
+
+    # Create valid profile for meal commit tests
+    _, p_body = api_instance.handle_request(
+        "POST", "/api/v1/profiles", json.dumps({"name": "Valid", "profile_type": "standard"})
+    )
+    p_id = json.loads(p_body)["id"]
+
+    # 2. Empty ingredients list
+    status2, _ = api_instance.handle_request(
+        method="POST",
+        path="/api/v1/meals/commit",
+        body=json.dumps(
+            {
+                "dish_name": "Empty Dish",
+                "ingredients": [],
+                "allocations": [{"profile_id": p_id, "fraction": 1.0}],
+            }
+        ),
+    )
+    assert status2 == 400
+
+    # 3. Blank dish_name
+    status3, _ = api_instance.handle_request(
+        method="POST",
+        path="/api/v1/meals/commit",
+        body=json.dumps(
+            {
+                "dish_name": "   ",
+                "ingredients": [
+                    {
+                        "item_name": "rice",
+                        "fdc_id": 100,
+                        "grams": 100.0,
+                        "calories": 100.0,
+                        "protein_g": 2.0,
+                        "carbs_g": 20.0,
+                        "fat_g": 1.0,
+                        "fiber_g": 1.0,
+                    }
+                ],
+                "allocations": [{"profile_id": p_id, "fraction": 1.0}],
+            }
+        ),
+    )
+    assert status3 == 400
+
+
+def test_api_rolling_analytics_bounds_feeding_intervals_to_days(api_instance):
+    """GET /api/v1/analytics/rolling?days=2 bounds feeding_intervals to the most recent 2 days."""
+    _, p_res = api_instance.handle_request(
+        "POST", "/api/v1/profiles", json.dumps({"name": "WindowUser", "profile_type": "standard"})
+    )
+    p_id = json.loads(p_res)["id"]
+
+    cursor = api_instance.conn.cursor()
+    for day in (25, 26, 27, 28):
+        cursor.execute(
+            """
+            INSERT INTO meal_logs (
+                id, profile_id, meal_type, portion_fraction,
+                calories, protein_g, carbs_g, fat_g, fiber_g, logged_at
+            ) VALUES (?, ?, 'dinner', 1.0, 600.0, 30.0, 60.0, 20.0, 8.0, ?);
+            """,
+            (f"w_{day}", p_id, f"2026-10-{day} 18:00:00"),
+        )
+    api_instance.conn.commit()
+
+    status, body = api_instance.handle_request(
+        method="GET",
+        path=f"/api/v1/analytics/rolling?profile_id={p_id}&days=2",
+    )
+    assert status == 200
+    res_data = json.loads(body)
+    assert len(res_data["feeding_intervals"]) == 2
+    assert [i["date"] for i in res_data["feeding_intervals"]] == ["2026-10-27", "2026-10-28"]

@@ -216,3 +216,132 @@ def test_atomic_rollback_on_failure(db_conn):
     cursor.execute("SELECT COUNT(*) FROM meal_logs WHERE profile_id = ?;", (p1.id,))
     count = cursor.fetchone()[0]
     assert count == 0
+
+
+def test_commit_meal_atomic_rollback_on_portion_error(db_conn):
+    """commit_meal must leave 0 rows in dishes when portion validation fails."""
+    allocator = BatchDishAllocator(db_conn)
+    ingredients = [
+        DishIngredient(
+            item_name="rice",
+            fdc_id=1001,
+            grams=200.0,
+            calories=200.0,
+            protein_g=4.0,
+            carbs_g=40.0,
+            fat_g=1.0,
+            fiber_g=2.0,
+            micros={},
+        )
+    ]
+    invalid_allocs = [
+        ProfilePortionAllocation(profile_id="p1", fraction=0.7),
+        ProfilePortionAllocation(profile_id="p2", fraction=0.6),
+    ]
+
+    with pytest.raises(InvalidPortionSumError):
+        allocator.commit_meal("Failed Dish", ingredients, invalid_allocs)
+
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM dishes;")
+    assert cursor.fetchone()[0] == 0
+
+
+def test_commit_meal_atomic_rollback_on_fk_error(db_conn):
+    """commit_meal must roll back both dishes and meal_logs on FK constraint failure."""
+    allocator = BatchDishAllocator(db_conn)
+    ingredients = [
+        DishIngredient(
+            item_name="curry",
+            fdc_id=2001,
+            grams=300.0,
+            calories=300.0,
+            protein_g=10.0,
+            carbs_g=20.0,
+            fat_g=15.0,
+            fiber_g=3.0,
+            micros={},
+        )
+    ]
+    bad_allocs = [
+        ProfilePortionAllocation(profile_id="non_existent_profile_id", fraction=0.5),
+    ]
+
+    with pytest.raises(sqlite3.IntegrityError):
+        allocator.commit_meal("Curry Batch", ingredients, bad_allocs)
+
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM dishes;")
+    assert cursor.fetchone()[0] == 0
+    cursor.execute("SELECT COUNT(*) FROM meal_logs;")
+    assert cursor.fetchone()[0] == 0
+
+
+def test_commit_meal_persists_custom_logged_at(db_conn):
+    """commit_meal should store custom ISO-8601 logged_at timestamps."""
+    profile_repo = ProfileRepository(db_conn)
+    profile = profile_repo.create_profile("Time Traveler", "standard")
+
+    allocator = BatchDishAllocator(db_conn)
+    ingredients = [
+        DishIngredient(
+            item_name="oatmeal",
+            fdc_id=3001,
+            grams=100.0,
+            calories=150.0,
+            protein_g=5.0,
+            carbs_g=27.0,
+            fat_g=2.5,
+            fiber_g=4.0,
+            micros={},
+        )
+    ]
+    custom_ts = "2026-03-15T08:30:00"
+    allocs = [
+        ProfilePortionAllocation(
+            profile_id=profile.id,
+            fraction=1.0,
+            meal_type="breakfast",
+            logged_at=custom_ts,
+        )
+    ]
+
+    dish, log_ids = allocator.commit_meal("Morning Oats", ingredients, allocs)
+    assert len(log_ids) == 1
+
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT logged_at FROM meal_logs WHERE id = ?;", (log_ids[0],))
+    row = cursor.fetchone()
+    assert row[0] == custom_ts
+
+
+def test_batch_dish_preserves_three_decimal_micronutrient_precision(db_conn):
+    """BatchDish aggregation must preserve 3-decimal micronutrient precision."""
+    allocator = BatchDishAllocator(db_conn)
+    ingredients = [
+        DishIngredient(
+            item_name="nutritional yeast",
+            fdc_id=4001,
+            grams=15.0,
+            calories=60.0,
+            protein_g=8.0,
+            carbs_g=5.0,
+            fat_g=0.5,
+            fiber_g=3.0,
+            micros={"vitamin_b12_mcg": 0.125, "selenium_mcg": 0.044},
+        ),
+        DishIngredient(
+            item_name="hemp seeds",
+            fdc_id=4002,
+            grams=30.0,
+            calories=166.0,
+            protein_g=9.5,
+            carbs_g=2.6,
+            fat_g=14.6,
+            fiber_g=1.2,
+            micros={"vitamin_b12_mcg": 0.003, "selenium_mcg": 0.012},
+        ),
+    ]
+    dish = allocator.create_dish("Superfood Topping", ingredients)
+    assert dish.total_micros["vitamin_b12_mcg"] == 0.128
+    assert dish.total_micros["selenium_mcg"] == 0.056

@@ -44,7 +44,7 @@ NutriVault automatically probes your host compute specs on launch to prevent out
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/your-username/NutriVault.git
+git clone https://github.com/codeja3/NutriVault.git
 cd NutriVault
 
 # 2. Create virtual environment
@@ -63,14 +63,21 @@ uv run pytest
 ## 3. Running the Backend Service
 
 ### Option A: Local Python API Service
-NutriVault exposes a high-performance REST API and local router:
+NutriVault exposes a thread-safe local HTTP daemon (`ThreadingHTTPServer`) and REST router on port `8080` by default:
 
 ```bash
+# Default: host=0.0.0.0, port=8080, db_path=data/nutrivault.db
 uv run python -m src.api
+
+# Custom positional arguments: [host] [port] [db_path]
+uv run python -m src.api 127.0.0.1 8080 data/nutrivault.db
+
+# Or via environment variables:
+NUTRIVAULT_HOST=0.0.0.0 NUTRIVAULT_PORT=8080 NUTRIVAULT_DB=data/nutrivault.db uv run python -m src.api
 ```
 
 ### Option B: Local Inference Engine (`llama-server`)
-If you want to run multimodal vision extraction locally, launch `llama-server` on loopback:
+If you want to run multimodal vision extraction locally, launch `llama-server` on loopback port `8081`:
 
 ```bash
 # Example for Tier 2 mid-spec (e.g. Qwen2.5-VL 7B):
@@ -79,7 +86,7 @@ If you want to run multimodal vision extraction locally, launch `llama-server` o
   --port 8081 --host 127.0.0.1
 ```
 
-NutriVault automatically points to `http://127.0.0.1:8081/v1/chat/completions` to extract food entities and portions.
+NutriVault automatically points to `http://127.0.0.1:8081/v1/chat/completions` to extract food entities and portions (with strict loopback SSRF validation).
 
 ---
 
@@ -120,44 +127,69 @@ curl -X PUT http://localhost:8080/api/v1/profiles/{profile_id}/targets \
     "carbs_g_target": 280.0,
     "fat_g_target": 70.0,
     "fiber_g_target": 35.0,
-    "micronutrients": {"iron_mg": 18.0, "calcium_mg": 1000.0}
+    "micronutrients": {"iron_mg": 18.0, "calcium_mg": 1000.0},
+    "is_ai_generated": false,
+    "acknowledged": false
   }'
 ```
 
-*Note: Previous target envelopes are preserved as inactive history, ensuring accurate longitudinal analytics.*
+*Note: When applying AI-generated athletic targets (`"is_ai_generated": true`), `"acknowledged": true` is required (HTTP 400 if omitted). Profiles with `profile_type == "chronic_condition"` reject `"is_ai_generated": true` with HTTP 403 (`ERR_CLINICAL_AI_RESTRICTED`). Previous target envelopes are preserved as inactive history (`is_active = 0`).*
 
 ---
 
 ### 4.3 Logging a Meal via Ephemeral Photo
 
-1. Open the mobile or desktop web interface over your local LAN.
-2. Snap or upload a photo of your meal.
-3. The image is parsed in **volatile RAM (`io.BytesIO`)** with **zero disk writes**.
-4. The local VLM extracts the items and estimates portion grams:
+1. Snap or upload a photo of your meal via `multipart/form-data`:
+   ```bash
+   curl -X POST http://localhost:8080/api/v1/meals/parse-image \
+     -F "image=@meal.jpg"
+   ```
+2. Payloads exceeding **15 MB** are rejected at the HTTP header boundary with HTTP 413 (`ERR_IMAGE_PAYLOAD_TOO_LARGE`) before allocating memory.
+3. The image is extracted in mutable `bytearray` buffers and held strictly in **volatile RAM (`io.BytesIO`)** with **zero disk writes**.
+4. The local VLM (`127.0.0.1:8081`) extracts distinct food items and estimates portion grams (`> 0.0`):
    ```json
    [
      {"item_name": "steamed brown rice", "estimated_grams": 200.0},
      {"item_name": "grilled chicken breast", "estimated_grams": 150.0}
    ]
    ```
-5. NutriVault matches candidate food items to the static **USDA FoodData Central** reference table and calculates exact linear nutrients.
-6. The user confirms, tweaks portion sizes, or adds ingredients, then taps **"Commit"**.
-7. The image bytes are **purged immediately from memory**.
+5. NutriVault matches candidate food items to the **USDA FoodData Central** reference table and calculates exact linear nutrients (macros rounded to 2 decimal places, micronutrients to 3 decimal places).
+6. Regardless of success or error, the underlying image memory buffers are **overwritten in-place with `0x00` bytes and purged immediately**.
 
 ---
 
 ### 4.4 Batch Cooking & Fractional Family Splitting
 
-One of NutriVault's unique features is handling **cook-once shared dishes**:
+One of NutriVault's core workflows is handling **cook-once shared dishes**:
 
 1. **Cook:** The household cook prepares a large batch of pasta or casserole.
-2. **Log Dish:** The dish is logged once (`dishes` table) with total ingredient weights.
-3. **Allocate Fractions:** The cook distributes portions using interactive sliders:
-   * Parent A: `40%` (`0.4`)
-   * Parent B: `40%` (`0.4`)
-   * Child: `20%` (`0.2`)
-4. **Commit:** NutriVault calculates individual calories and macros for each member and logs distinct records to their journals atomically.
-5. **Leftover Support:** Total portions can sum to less than 1.0 (e.g., `0.7` consumed, leaving `0.3` for next day leftovers).
+2. **Allocate & Commit Atomically:** Distribute fractional portions ($0.0 < \sum \text{fraction} \le 1.0$) across household profiles in a single atomic transaction:
+   ```bash
+   curl -X POST http://localhost:8080/api/v1/meals/commit \
+     -H "Content-Type: application/json" \
+     -d '{
+       "dish_name": "Family Chicken & Rice Casserole",
+       "ingredients": [
+         {
+           "item_name": "cooked brown rice",
+           "fdc_id": 1001,
+           "grams": 600.0,
+           "calories": 672.0,
+           "protein_g": 13.8,
+           "carbs_g": 141.0,
+           "fat_g": 4.8,
+           "fiber_g": 9.6,
+           "micros": {"potassium_mg": 474.0}
+         }
+       ],
+       "allocations": [
+         {"profile_id": "{parent_a_id}", "fraction": 0.4, "meal_type": "dinner"},
+         {"profile_id": "{parent_b_id}", "fraction": 0.4, "meal_type": "dinner"},
+         {"profile_id": "{child_id}", "fraction": 0.2, "meal_type": "dinner"}
+       ]
+     }'
+   ```
+3. **Leftover Support:** Total portions can sum to less than `1.0` (e.g., `0.7` consumed today, leaving `0.3` for leftovers). Any invalid sum ($\le 0.0$ or $> 1.0$) or constraint error rolls back both `dishes` and `meal_logs` atomically (`ERR_INVALID_PORTION_SUM`).
 
 ---
 

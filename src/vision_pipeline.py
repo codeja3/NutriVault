@@ -211,10 +211,13 @@ class VLMClient:
 
                 candidates: list[ExtractedCandidateItem] = []
                 for item in parsed_data:
+                    grams = float(item["estimated_grams"])
+                    if grams <= 0.0:
+                        raise ValueError(f"Portion weight must be > 0.0 grams, got {grams}")
                     candidates.append(
                         ExtractedCandidateItem(
                             item_name=str(item["item_name"]).strip(),
-                            estimated_grams=float(item["estimated_grams"]),
+                            estimated_grams=grams,
                         )
                     )
                 return candidates

@@ -139,3 +139,43 @@
   - [x] `RED`: Author tests asserting GroundingEngine token cache speedup, database attachment helper in `src/db.py`, and HTTP server entrypoint.
   - [x] `GREEN`: Implement cached token sets in `GroundingEngine`, `attach_usda_reference` helper in `src/db.py`, and `ThreadingHTTPServer` CLI runner in `src/api.py`.
   - [x] `REFACTOR`: Verify `MANUAL.md` compatibility and run full test suite with Ruff lint/format.
+
+---
+
+## Phase 9: Expanded Review — Deep Security, Thread Safety & Robustness
+
+- [x] **Task 9.1: Safe Database Attachment & Schema Shadowing Resolution**
+  - [x] `RED`: Author tests verifying rejection of unsafe schema names in `attach_usda_reference`, and query resolution against `usda.usda_foods` when external reference is attached.
+  - [x] `GREEN`: Restrict schema identifiers to validated alphanumeric tokens / hardcoded `"usda"`, and update `GroundingEngine` to query `usda.usda_foods` if attached and populated.
+  - [x] `REFACTOR`: Preserve full backwards compatibility with unified in-memory reference tables.
+
+- [x] **Task 9.2: Thread-Safe API Lock & Unbounded Payload Guard**
+  - [x] `RED`: Author tests asserting concurrent request thread-safety via API lock, rejection of oversized Content-Length before read, and handling of malformed Content-Length headers.
+  - [x] `GREEN`: Add `threading.Lock` around SQLite request dispatch in `NutriVaultAPI`, and enforce numeric/max-size checks in `NutriVaultHTTPHandler._dispatch`.
+  - [x] `REFACTOR`: Ensure clean HTTP 413 and 400 status codes without handler crashes.
+
+- [x] **Task 9.3: End-to-End Ephemeral Bytearray Zeroing**
+  - [x] `RED`: Author test asserting mutable bytearray buffers in `_extract_image_bytes` and `_handle_parse_image` are zeroed in finally blocks.
+  - [x] `GREEN`: Implement bytearray conversion and in-place zeroing across multipart extraction and request handling.
+  - [x] `REFACTOR`: Ensure zero dangling heap slices on both success and error branches.
+
+- [x] **Task 9.4: IntegrityError to 400 Mapping & Strict Literal Enums**
+  - [x] `RED`: Author tests asserting `sqlite3.IntegrityError` returns HTTP 400 instead of HTTP 500, and Pydantic models reject invalid `profile_type` and `meal_type` strings.
+  - [x] `GREEN`: Add `Literal` type constraints to `ProfileCreateRequest` and `ProfilePortionAllocationRequest`, and map `sqlite3.IntegrityError` to HTTP 400.
+  - [x] `REFACTOR`: Unify database integrity error messaging.
+
+- [x] **Task 9.5: VLM Non-Positive Gram Validation & Automatic Retry Trigger**
+  - [x] `RED`: Author tests asserting VLM emitting `estimated_grams <= 0` triggers retry in `VLMClient.parse_meal_image` and raises `VLMInvalidJSONError` on repeated failure.
+  - [x] `GREEN`: Validate `grams > 0.0` in `parse_meal_image` loop, raising `VLMInvalidJSONError` when non-positive.
+  - [x] `REFACTOR`: Maintain clean retry logging and error boundaries.
+
+- [x] **Task 9.6: Analytics Days Validation & Ingestion Timestamp Parsing**
+  - [x] `RED`: Author tests asserting `days < 1` in rolling analytics returns HTTP 400, and malformed ISO-8601 timestamps in meal allocations are rejected upfront.
+  - [x] `GREEN`: Validate `days >= 1` in `calculate_rolling_ema` / `handle_request`, and validate `datetime.fromisoformat` on allocation timestamps.
+  - [x] `REFACTOR`: Standardize analytics query parameter validation.
+
+- [x] **Task 9.7: BatchDishAllocator Logic Deduplication**
+  - [x] `RED`: Verify complete test coverage for `create_dish`, `commit_batch_allocations`, and `commit_meal`.
+  - [x] `GREEN`: Extract private `_build_dish`, `_insert_dish`, and `_insert_allocations` helpers to eliminate duplicated SQL and aggregation logic.
+  - [x] `REFACTOR`: Format cleanly and run full 100% offline regression check.
+

@@ -155,6 +155,40 @@ def test_vlm_client_unavailable_error(mocker):
     assert exc_info.value.error_code == "ERR_VLM_UNAVAILABLE"
 
 
+def test_vlm_client_retries_on_non_positive_grams(mocker):
+    """VLM emitting non-positive grams triggers retry and recovers on valid response."""
+    client = VLMClient(endpoint_url="http://127.0.0.1:8080/v1/chat/completions")
+
+    call1 = {
+        "choices": [{"message": {"content": '[{"item_name": "rice", "estimated_grams": -10.0}]'}}]
+    }
+    call2 = {
+        "choices": [{"message": {"content": '[{"item_name": "rice", "estimated_grams": 150.0}]'}}]
+    }
+    mock_post = mocker.patch("src.vision_pipeline._post_loopback_json", side_effect=[call1, call2])
+
+    with EphemeralImageBuffer.from_bytes(b"dummy") as buf:
+        candidates = client.parse_meal_image(buf)
+
+    assert mock_post.call_count == 2
+    assert len(candidates) == 1
+    assert candidates[0].estimated_grams == 150.0
+
+
+def test_vlm_client_raises_invalid_json_if_grams_persistently_non_positive(mocker):
+    """Persistent non-positive grams exhausts retries and raises VLMInvalidJSONError."""
+    client = VLMClient(endpoint_url="http://127.0.0.1:8080/v1/chat/completions")
+
+    zero_gram_resp = {
+        "choices": [{"message": {"content": '[{"item_name": "soup", "estimated_grams": 0.0}]'}}]
+    }
+    mocker.patch("src.vision_pipeline._post_loopback_json", return_value=zero_gram_resp)
+
+    with EphemeralImageBuffer.from_bytes(b"dummy") as buf:
+        with pytest.raises(VLMInvalidJSONError):
+            client.parse_meal_image(buf)
+
+
 def test_ephemeral_image_buffer_purge_zeroes_memory():
     """Purge must overwrite underlying buffer memoryview with 0x00 before freeing."""
     data = b"sensitive_user_photo_data_12345"

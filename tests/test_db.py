@@ -366,3 +366,13 @@ def test_attach_usda_reference(tmp_path):
     cursor.execute("SELECT name FROM usda.sqlite_master WHERE type='table';")
     tables = [row[0] for row in cursor.fetchall()]
     assert "usda_test" in tables
+
+
+def test_attach_usda_reference_rejects_unsafe_schema_name(tmp_path):
+    """attach_usda_reference must strictly validate schema_name against whitelist."""
+    main_conn = sqlite3.connect(":memory:")
+    init_db(main_conn)
+
+    usda_file = str(tmp_path / "usda_reference.db")
+    with pytest.raises(ValueError, match="schema name"):
+        attach_usda_reference(main_conn, usda_file, schema_name="usda; DROP TABLE profiles;--")

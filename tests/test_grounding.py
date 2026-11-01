@@ -239,3 +239,39 @@ def test_grounding_engine_token_cache(populated_usda_conn):
     m3 = engine.search_candidates("raw brown rice", limit=3)
     assert len(m3) > 0
     assert engine.is_cached is True
+
+
+def test_grounding_engine_queries_attached_usda_schema_without_shadowing(tmp_path):
+    """GroundingEngine resolves to usda.usda_foods when attached, avoiding main table shadowing."""
+    from src.db import attach_usda_reference
+
+    # Main database has empty usda_foods table from init_db
+    main_conn = sqlite3.connect(":memory:")
+    init_db(main_conn)
+
+    # Secondary USDA database has populated usda_foods
+    usda_path = str(tmp_path / "usda_reference.db")
+    usda_conn = sqlite3.connect(usda_path)
+    init_db(usda_conn)
+    usda_conn.execute(
+        """
+        INSERT INTO usda_foods (
+            fdc_id, description, food_category, preparation_state,
+            calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
+            fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
+        ) VALUES (
+            9001, 'Attached Organic Quinoa, cooked', 'Grains', 'cooked',
+            120.0, 4.4, 21.3, 1.9, 2.8, '{}'
+        );
+        """
+    )
+    usda_conn.commit()
+    usda_conn.close()
+
+    attach_usda_reference(main_conn, usda_path, schema_name="usda")
+
+    engine = GroundingEngine(main_conn)
+    matches = engine.search_candidates("quinoa", limit=1)
+    assert len(matches) == 1
+    assert matches[0].fdc_id == 9001
+    assert matches[0].description == "Attached Organic Quinoa, cooked"

@@ -65,4 +65,11 @@
   * Task 8.3: Analytics rolling 7-day EMA subquery windowing (selecting most recent 7 days chronologically), consecutive-day overnight fast validation in chrononutrition windows, and robust bracket matching in `clean_vlm_json_output`.
   * Task 8.4: Atomic multi-table batch meal persistence (`BatchDishAllocator.commit_meal`) preventing orphaned `dishes`, and in-memory multipart boundary decoding in `NutriVaultAPI._handle_parse_image`.
   * Task 8.5: `GroundingEngine` in-memory token caching (`CachedFoodEntry`), dual-database schema attachment (`attach_usda_reference`), and `ThreadingHTTPServer` daemon runner in `src/api.py` honoring `MANUAL.md`.
-* **Current Status:** 100% contract requirements fulfilled, all security and logic findings remediated, and verified across all 69 offline unit tests.
+  * Task 9.1: Safe database attachment rejecting dynamic f-strings in `attach_usda_reference`, and schema shadowing resolution in `GroundingEngine` (querying `usda.usda_foods` when external reference is attached and main reference is empty).
+  * Task 9.2: Thread-safe API lock (`threading.Lock` in `NutriVaultAPI`) protecting SQLite connection across concurrent HTTP requests, and Content-Length guards rejecting malformed headers (HTTP 400) or payloads > 15 MB (HTTP 413) prior to reading payload bytes.
+  * Task 9.3: End-to-end ephemeral bytearray memory zeroing across multipart extraction and request handling in `src/api.py`.
+  * Task 9.4: Mapping `sqlite3.IntegrityError` to HTTP 400 Bad Request, and enforcing strict `Literal` enums on `ProfileCreateRequest.profile_type` and `ProfilePortionAllocationRequest.meal_type`.
+  * Task 9.5: VLM candidate validation requiring `estimated_grams > 0.0`, triggering automated retry and raising `VLMInvalidJSONError` on repeated failure.
+  * Task 9.6: Rolling analytics query validation rejecting `days < 1` with HTTP 400, and upfront ISO-8601 validation for allocation timestamps (`logged_at`).
+  * Task 9.7: Refactoring and deduplicating dish building, insertion, and allocation loops in `BatchDishAllocator` (`_build_dish`, `_insert_dish`, `_insert_allocations`).
+* **Current Status:** 100% contract requirements fulfilled, all Part 1 and Part 2 security, thread-safety, and logic findings remediated, and verified across all 84 offline unit tests.

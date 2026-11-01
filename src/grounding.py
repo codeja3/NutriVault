@@ -107,14 +107,37 @@ class GroundingEngine:
             return self._cache
 
         cursor = self.conn.cursor()
-        cursor.execute(
-            """
-            SELECT fdc_id, description, food_category, preparation_state,
-                   calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
-                   fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
-            FROM usda_foods;
-            """
-        )
+        cursor.execute("PRAGMA database_list;")
+        attached_schemas = {row[1] for row in cursor.fetchall()}
+        use_attached_usda = False
+
+        if "usda" in attached_schemas:
+            cursor.execute(
+                "SELECT COUNT(*) FROM usda.sqlite_master WHERE type='table' AND name='usda_foods';"
+            )
+            if cursor.fetchone()[0] > 0:
+                cursor.execute("SELECT COUNT(*) FROM main.usda_foods;")
+                if cursor.fetchone()[0] == 0:
+                    use_attached_usda = True
+
+        if use_attached_usda:
+            cursor.execute(
+                """
+                SELECT fdc_id, description, food_category, preparation_state,
+                       calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
+                       fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
+                FROM usda.usda_foods;
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT fdc_id, description, food_category, preparation_state,
+                       calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
+                       fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
+                FROM usda_foods;
+                """
+            )
         rows = cursor.fetchall()
         cache: list[CachedFoodEntry] = []
         for r in rows:

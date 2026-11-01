@@ -326,4 +326,11 @@ def attach_usda_reference(
 ) -> None:
     """Attach external USDA reference SQLite database as a named schema."""
     cursor = conn.cursor()
-    cursor.execute(f"ATTACH DATABASE ? AS {schema_name};", (usda_db_path,))
+    if schema_name == "usda":
+        cursor.execute("ATTACH DATABASE ? AS usda;", (usda_db_path,))
+    elif schema_name == "usda_reference":
+        cursor.execute("ATTACH DATABASE ? AS usda_reference;", (usda_db_path,))
+    else:
+        raise ValueError(
+            f"Invalid schema name '{schema_name}'. Must be 'usda' or 'usda_reference'."
+        )

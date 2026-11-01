@@ -108,6 +108,8 @@ class AnalyticsEngine:
 
     def calculate_rolling_ema(self, profile_id: str, days: int = 7) -> RollingEMAResult:
         """Calculate EMA for calories and macronutrients over rolling days."""
+        if days < 1:
+            raise ValueError(f"Parameter 'days' must be an integer >= 1, got {days}.")
         cursor = self.conn.cursor()
 
         cursor.execute(

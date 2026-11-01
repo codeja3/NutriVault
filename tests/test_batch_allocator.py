@@ -275,3 +275,41 @@ def test_commit_meal_atomic_rollback_on_fk_error(db_conn):
     assert cursor.fetchone()[0] == 0
     cursor.execute("SELECT COUNT(*) FROM meal_logs;")
     assert cursor.fetchone()[0] == 0
+
+
+def test_commit_meal_persists_custom_logged_at(db_conn):
+    """commit_meal should store custom ISO-8601 logged_at timestamps."""
+    profile_repo = ProfileRepository(db_conn)
+    profile = profile_repo.create_profile("Time Traveler", "standard")
+
+    allocator = BatchDishAllocator(db_conn)
+    ingredients = [
+        DishIngredient(
+            item_name="oatmeal",
+            fdc_id=3001,
+            grams=100.0,
+            calories=150.0,
+            protein_g=5.0,
+            carbs_g=27.0,
+            fat_g=2.5,
+            fiber_g=4.0,
+            micros={},
+        )
+    ]
+    custom_ts = "2026-03-15T08:30:00"
+    allocs = [
+        ProfilePortionAllocation(
+            profile_id=profile.id,
+            fraction=1.0,
+            meal_type="breakfast",
+            logged_at=custom_ts,
+        )
+    ]
+
+    dish, log_ids = allocator.commit_meal("Morning Oats", ingredients, allocs)
+    assert len(log_ids) == 1
+
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT logged_at FROM meal_logs WHERE id = ?;", (log_ids[0],))
+    row = cursor.fetchone()
+    assert row[0] == custom_ts

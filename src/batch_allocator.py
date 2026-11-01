@@ -50,6 +50,7 @@ class ProfilePortionAllocation:
     profile_id: str
     fraction: float
     meal_type: str = "dinner"
+    logged_at: str | None = None
 
 
 class BatchDishAllocator:
@@ -58,71 +59,19 @@ class BatchDishAllocator:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
-    def create_dish(self, name: str, ingredients: list[DishIngredient]) -> BatchDish:
-        """Aggregate ingredients into a dish and persist in the dishes table."""
-        dish_id = str(uuid.uuid4())
-        total_grams = sum(ing.grams for ing in ingredients)
-        total_cal = sum(ing.calories for ing in ingredients)
-        total_pro = sum(ing.protein_g for ing in ingredients)
-        total_carb = sum(ing.carbs_g for ing in ingredients)
-        total_fat = sum(ing.fat_g for ing in ingredients)
-        total_fib = sum(ing.fiber_g for ing in ingredients)
-
-        total_micros: dict[str, float] = {}
-        for ing in ingredients:
-            for m_key, m_val in ing.micros.items():
-                total_micros[m_key] = round(total_micros.get(m_key, 0.0) + m_val, 2)
-
-        raw_ingredients_data = [asdict(ing) for ing in ingredients]
-        raw_json = json.dumps(raw_ingredients_data)
-        micros_json = json.dumps(total_micros)
-
-        cursor = self.conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO dishes (
-                id, name, total_estimated_grams, total_calories,
-                total_protein_g, total_carbs_g, total_fat_g, total_fiber_g,
-                total_micros_json, raw_ingredients_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-            """,
-            (
-                dish_id,
-                name,
-                total_grams,
-                total_cal,
-                total_pro,
-                total_carb,
-                total_fat,
-                total_fib,
-                micros_json,
-                raw_json,
-            ),
-        )
-        self.conn.commit()
-
-        return BatchDish(
-            id=dish_id,
-            name=name,
-            total_estimated_grams=round(total_grams, 2),
-            total_calories=round(total_cal, 2),
-            total_protein_g=round(total_pro, 2),
-            total_carbs_g=round(total_carb, 2),
-            total_fat_g=round(total_fat, 2),
-            total_fiber_g=round(total_fib, 2),
-            total_micros=total_micros,
-            raw_ingredients=raw_ingredients_data,
-        )
-
-    def commit_meal(
-        self,
-        name: str,
-        ingredients: list[DishIngredient],
-        allocations: list[ProfilePortionAllocation],
-    ) -> tuple[BatchDish, list[str]]:
-        """Atomically persist dish and profile allocations within a single transaction."""
-        self.validate_portion_allocations(allocations)
-
+    def _build_dish(
+        self, name: str, ingredients: list[DishIngredient]
+    ) -> tuple[
+        BatchDish,
+        str,
+        str,
+        float,
+        float,
+        float,
+        float,
+        float,
+        float,
+    ]:
         dish_id = str(uuid.uuid4())
         total_grams = sum(ing.grams for ing in ingredients)
         total_cal = sum(ing.calories for ing in ingredients)
@@ -152,37 +101,89 @@ class BatchDishAllocator:
             total_micros=total_micros,
             raw_ingredients=raw_ingredients_data,
         )
+        return (
+            dish,
+            raw_json,
+            micros_json,
+            total_grams,
+            total_cal,
+            total_pro,
+            total_carb,
+            total_fat,
+            total_fib,
+        )
 
-        cursor = self.conn.cursor()
-        try:
-            cursor.execute(
-                """
-                INSERT INTO dishes (
-                    id, name, total_estimated_grams, total_calories,
-                    total_protein_g, total_carbs_g, total_fat_g, total_fiber_g,
-                    total_micros_json, raw_ingredients_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                """,
-                (
-                    dish_id,
-                    name,
-                    total_grams,
-                    total_cal,
-                    total_pro,
-                    total_carb,
-                    total_fat,
-                    total_fib,
-                    micros_json,
-                    raw_json,
-                ),
-            )
+    def _insert_dish(
+        self,
+        cursor: sqlite3.Cursor,
+        dish: BatchDish,
+        raw_json: str,
+        micros_json: str,
+        total_grams: float,
+        total_cal: float,
+        total_pro: float,
+        total_carb: float,
+        total_fat: float,
+        total_fib: float,
+    ) -> None:
+        cursor.execute(
+            """
+            INSERT INTO dishes (
+                id, name, total_estimated_grams, total_calories,
+                total_protein_g, total_carbs_g, total_fat_g, total_fiber_g,
+                total_micros_json, raw_ingredients_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                dish.id,
+                dish.name,
+                total_grams,
+                total_cal,
+                total_pro,
+                total_carb,
+                total_fat,
+                total_fib,
+                micros_json,
+                raw_json,
+            ),
+        )
 
-            inserted_log_ids: list[str] = []
-            for alloc in allocations:
-                nutrients = self.calculate_profile_nutrients(dish, alloc.fraction)
-                log_id = str(uuid.uuid4())
-                alloc_micros_json = json.dumps(nutrients.micronutrients)
+    def _insert_allocations(
+        self,
+        cursor: sqlite3.Cursor,
+        dish: BatchDish,
+        allocations: list[ProfilePortionAllocation],
+    ) -> list[str]:
+        inserted_log_ids: list[str] = []
+        for alloc in allocations:
+            nutrients = self.calculate_profile_nutrients(dish, alloc.fraction)
+            log_id = str(uuid.uuid4())
+            alloc_micros_json = json.dumps(nutrients.micronutrients)
 
+            if alloc.logged_at is not None:
+                cursor.execute(
+                    """
+                    INSERT INTO meal_logs (
+                        id, profile_id, dish_id, meal_type, portion_fraction,
+                        calories, protein_g, carbs_g, fat_g, fiber_g, micros_json, logged_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    (
+                        log_id,
+                        alloc.profile_id,
+                        dish.id,
+                        alloc.meal_type,
+                        alloc.fraction,
+                        nutrients.calories,
+                        nutrients.protein_g,
+                        nutrients.carbs_g,
+                        nutrients.fat_g,
+                        nutrients.fiber_g,
+                        alloc_micros_json,
+                        alloc.logged_at,
+                    ),
+                )
+            else:
                 cursor.execute(
                     """
                     INSERT INTO meal_logs (
@@ -204,8 +205,50 @@ class BatchDishAllocator:
                         alloc_micros_json,
                     ),
                 )
-                inserted_log_ids.append(log_id)
+            inserted_log_ids.append(log_id)
+        return inserted_log_ids
 
+    def create_dish(self, name: str, ingredients: list[DishIngredient]) -> BatchDish:
+        """Aggregate ingredients into a dish and persist in the dishes table."""
+        (
+            dish,
+            raw_json,
+            micros_json,
+            tg,
+            tc,
+            tp,
+            tcb,
+            tf,
+            tfb,
+        ) = self._build_dish(name, ingredients)
+        cursor = self.conn.cursor()
+        self._insert_dish(cursor, dish, raw_json, micros_json, tg, tc, tp, tcb, tf, tfb)
+        self.conn.commit()
+        return dish
+
+    def commit_meal(
+        self,
+        name: str,
+        ingredients: list[DishIngredient],
+        allocations: list[ProfilePortionAllocation],
+    ) -> tuple[BatchDish, list[str]]:
+        """Atomically persist dish and profile allocations within a single transaction."""
+        self.validate_portion_allocations(allocations)
+        (
+            dish,
+            raw_json,
+            micros_json,
+            tg,
+            tc,
+            tp,
+            tcb,
+            tf,
+            tfb,
+        ) = self._build_dish(name, ingredients)
+        cursor = self.conn.cursor()
+        try:
+            self._insert_dish(cursor, dish, raw_json, micros_json, tg, tc, tp, tcb, tf, tfb)
+            inserted_log_ids = self._insert_allocations(cursor, dish, allocations)
             self.conn.commit()
             return dish, inserted_log_ids
         except Exception:
@@ -252,38 +295,9 @@ class BatchDishAllocator:
     ) -> list[str]:
         """Atomically persist meal_logs for allocations, rolling back entirely on error."""
         self.validate_portion_allocations(allocations)
-        inserted_log_ids: list[str] = []
-
         cursor = self.conn.cursor()
         try:
-            for alloc in allocations:
-                nutrients = self.calculate_profile_nutrients(dish, alloc.fraction)
-                log_id = str(uuid.uuid4())
-                micros_json = json.dumps(nutrients.micronutrients)
-
-                cursor.execute(
-                    """
-                    INSERT INTO meal_logs (
-                        id, profile_id, dish_id, meal_type, portion_fraction,
-                        calories, protein_g, carbs_g, fat_g, fiber_g, micros_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                    """,
-                    (
-                        log_id,
-                        alloc.profile_id,
-                        dish.id,
-                        alloc.meal_type,
-                        alloc.fraction,
-                        nutrients.calories,
-                        nutrients.protein_g,
-                        nutrients.carbs_g,
-                        nutrients.fat_g,
-                        nutrients.fiber_g,
-                        micros_json,
-                    ),
-                )
-                inserted_log_ids.append(log_id)
-
+            inserted_log_ids = self._insert_allocations(cursor, dish, allocations)
             self.conn.commit()
             return inserted_log_ids
         except Exception:

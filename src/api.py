@@ -4,11 +4,13 @@ import http.server
 import json
 import re
 import sqlite3
+import threading
 import urllib.parse
 from dataclasses import asdict
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from src.advisory import (
     ClinicalAdvisoryViolationError,
@@ -42,10 +44,13 @@ from src.vision_pipeline import (
     VLMUnavailableError,
 )
 
+ProfileType = Literal["standard", "athletic", "chronic_condition"]
+MealType = Literal["breakfast", "lunch", "dinner", "snack", "pre_workout", "post_workout"]
+
 
 class ProfileCreateRequest(BaseModel):
     name: str
-    profile_type: str
+    profile_type: ProfileType
     birth_date: str | None = None
     condition_notes: str | None = None
 
@@ -82,7 +87,18 @@ class DishIngredientRequest(BaseModel):
 class ProfilePortionAllocationRequest(BaseModel):
     profile_id: str
     fraction: float
-    meal_type: str = "dinner"
+    meal_type: MealType = "dinner"
+    logged_at: str | None = None
+
+    @field_validator("logged_at")
+    @classmethod
+    def validate_logged_at_iso(cls, v: str | None) -> str | None:
+        if v is not None:
+            try:
+                datetime.fromisoformat(v)
+            except ValueError as e:
+                raise ValueError(f"Invalid ISO-8601 timestamp: {v}") from e
+        return v
 
 
 class MealCommitRequest(BaseModel):
@@ -91,10 +107,11 @@ class MealCommitRequest(BaseModel):
     allocations: list[ProfilePortionAllocationRequest]
 
 
-def _extract_image_bytes(raw_body: bytes, content_type: str) -> bytes:
-    """Extract raw image binary bytes from multipart/form-data or direct payload."""
+def _extract_image_bytearray(raw_body: bytes | bytearray, content_type: str) -> bytearray:
+    """Extract raw image binary bytes into a mutable bytearray from multipart or direct payload."""
+    ba = bytearray(raw_body)
     if not content_type or "multipart/form-data" not in content_type:
-        return raw_body
+        return ba
 
     boundary = None
     for part in content_type.split(";"):
@@ -104,7 +121,7 @@ def _extract_image_bytes(raw_body: bytes, content_type: str) -> bytes:
             break
 
     boundary_bytes = (f"--{boundary}" if boundary else "--").encode("utf-8")
-    parts = raw_body.split(boundary_bytes)
+    parts = ba.split(boundary_bytes)
     for p in parts:
         if not p or p in (b"--\r\n", b"--", b"\r\n"):
             continue
@@ -115,15 +132,15 @@ def _extract_image_bytes(raw_body: bytes, content_type: str) -> bytes:
         else:
             continue
 
-        hdr_str = hdr.decode("utf-8", errors="ignore").lower()
+        hdr_str = bytes(hdr).decode("utf-8", errors="ignore").lower()
         if 'name="image"' in hdr_str or "filename=" in hdr_str or "image/" in hdr_str:
             if body.endswith(b"\r\n"):
                 body = body[:-2]
             elif body.endswith(b"\n"):
                 body = body[:-1]
-            return body
+            return bytearray(body)
 
-    return raw_body
+    return ba
 
 
 class NutriVaultAPI:
@@ -143,6 +160,7 @@ class NutriVaultAPI:
         self.vlm_client = vlm_client or VLMClient()
         self.batch_allocator = BatchDishAllocator(conn)
         self.analytics_engine = AnalyticsEngine(conn)
+        self._lock = threading.Lock()
 
     def handle_request(
         self,
@@ -153,6 +171,23 @@ class NutriVaultAPI:
         content_type: str = "application/json",
     ) -> tuple[int, str]:
         """Route request and return (status_code, response_body_json)."""
+        with self._lock:
+            return self._handle_request_locked(
+                method=method,
+                path=path,
+                body=body,
+                raw_body=raw_body,
+                content_type=content_type,
+            )
+
+    def _handle_request_locked(
+        self,
+        method: str,
+        path: str,
+        body: str | None = None,
+        raw_body: bytes | None = None,
+        content_type: str = "application/json",
+    ) -> tuple[int, str]:
         method = method.upper()
 
         parsed_url = urllib.parse.urlparse(path)
@@ -197,8 +232,13 @@ class NutriVaultAPI:
             # 8. GET /api/v1/analytics/rolling
             if method == "GET" and route_path == "/api/v1/analytics/rolling":
                 profile_id = query_params.get("profile_id", [None])[0]
-                days_param = query_params.get("days", [7])[0]
-                days = int(days_param) if days_param else 7
+                days_param = query_params.get("days", ["7"])[0]
+                try:
+                    days = int(days_param) if days_param else 7
+                except ValueError:
+                    raise ValueError(f"Invalid 'days' query parameter: {days_param}")
+                if days < 1:
+                    raise ValueError("Query parameter 'days' must be an integer >= 1.")
                 if not profile_id:
                     raise ValueError("Query parameter 'profile_id' is required.")
                 return self._handle_get_analytics(profile_id, days)
@@ -219,6 +259,8 @@ class NutriVaultAPI:
             return 422, json.dumps({"error_code": e.error_code, "error": str(e)})
         except VLMUnavailableError as e:
             return 503, json.dumps({"error_code": e.error_code, "error": str(e)})
+        except sqlite3.IntegrityError as e:
+            return 400, json.dumps({"error": f"Database integrity violation: {e}"})
         except KeyError as e:
             return 404, json.dumps({"error": str(e)})
         except ValueError as e:
@@ -292,15 +334,22 @@ class NutriVaultAPI:
 
     def _handle_parse_image(
         self,
-        raw_body: bytes | None,
+        raw_body: bytes | bytearray | None,
         content_type: str = "application/json",
     ) -> tuple[int, str]:
         if not raw_body:
             raise ValueError("No image payload provided.")
 
-        image_bytes = _extract_image_bytes(raw_body, content_type)
-        with EphemeralImageBuffer.from_bytes(image_bytes) as buffer:
-            candidate_items = self.vlm_client.parse_meal_image(buffer)
+        try:
+            image_ba = _extract_image_bytearray(raw_body, content_type)
+            try:
+                with EphemeralImageBuffer.from_bytes(bytes(image_ba)) as buffer:
+                    candidate_items = self.vlm_client.parse_meal_image(buffer)
+            finally:
+                image_ba[:] = b"\x00" * len(image_ba)
+        finally:
+            if isinstance(raw_body, bytearray):
+                raw_body[:] = b"\x00" * len(raw_body)
 
         grounded_items = []
         for c in candidate_items:
@@ -354,6 +403,7 @@ class NutriVaultAPI:
                 profile_id=a.profile_id,
                 fraction=a.fraction,
                 meal_type=a.meal_type,
+                logged_at=a.logged_at,
             )
             for a in req.allocations
         ]
@@ -393,23 +443,60 @@ class NutriVaultHTTPHandler(http.server.BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:
         self._dispatch("DELETE")
 
-    def _dispatch(self, method: str) -> None:
-        content_length = int(self.headers.get("Content-Length", 0))
-        content_type = self.headers.get("Content-Type", "application/json")
-        raw_body = self.rfile.read(content_length) if content_length > 0 else None
-        body = (
-            raw_body.decode("utf-8", errors="ignore")
-            if raw_body and "multipart" not in content_type
-            else None
-        )
+    def _send_json(self, status_code: int, data: dict[str, Any]) -> None:
+        body = json.dumps(data).encode("utf-8")
+        self.send_response(status_code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
-        status_code, response_body = self.api.handle_request(
-            method=method,
-            path=self.path,
-            body=body,
-            raw_body=raw_body,
-            content_type=content_type,
-        )
+    def _dispatch(self, method: str) -> None:
+        cl_header = self.headers.get("Content-Length")
+        content_length = 0
+        if cl_header is not None:
+            try:
+                content_length = int(cl_header.strip())
+                if content_length < 0:
+                    raise ValueError("Negative Content-Length")
+            except ValueError:
+                self._send_json(400, {"error": "Invalid Content-Length header."})
+                return
+
+        from src.vision_pipeline import MAX_IMAGE_SIZE_BYTES
+
+        if content_length > MAX_IMAGE_SIZE_BYTES:
+            self._send_json(
+                413,
+                {
+                    "error_code": "ERR_IMAGE_PAYLOAD_TOO_LARGE",
+                    "error": (
+                        f"Image payload size ({content_length} bytes) exceeds "
+                        f"maximum allowable memory limit of {MAX_IMAGE_SIZE_BYTES} bytes."
+                    ),
+                },
+            )
+            return
+
+        content_type = self.headers.get("Content-Type", "application/json")
+        raw_body = bytearray(self.rfile.read(content_length)) if content_length > 0 else None
+        try:
+            body = (
+                raw_body.decode("utf-8", errors="ignore")
+                if raw_body and "multipart" not in content_type
+                else None
+            )
+
+            status_code, response_body = self.api.handle_request(
+                method=method,
+                path=self.path,
+                body=body,
+                raw_body=raw_body,
+                content_type=content_type,
+            )
+        finally:
+            if raw_body is not None and "multipart" in content_type:
+                raw_body[:] = b"\x00" * len(raw_body)
 
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")

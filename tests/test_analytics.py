@@ -224,3 +224,18 @@ def test_calculate_chrononutrition_windows_non_consecutive_days():
     # Wednesday must NOT calculate a 39h overnight fast from Monday
     assert intervals[1].date == "2026-10-27"
     assert intervals[1].overnight_fast_hours is None
+
+
+def test_calculate_rolling_ema_rejects_non_positive_days():
+    """calculate_rolling_ema must raise ValueError if days < 1."""
+    conn = sqlite3.connect(":memory:")
+    init_db(conn)
+    repo = ProfileRepository(conn)
+    profile = repo.create_profile(name="TestDays", profile_type="standard")
+    analytics = AnalyticsEngine(conn)
+
+    with pytest.raises(ValueError, match="days"):
+        analytics.calculate_rolling_ema(profile_id=profile.id, days=0)
+
+    with pytest.raises(ValueError, match="days"):
+        analytics.calculate_rolling_ema(profile_id=profile.id, days=-3)

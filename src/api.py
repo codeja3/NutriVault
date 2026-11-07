@@ -29,13 +29,17 @@ from src.batch_allocator import (
 from src.db import ProfileRepository, init_db
 from src.grounding import (
     GroundingEngine,
+    calculate_linear_nutrients,
     resolve_food_item,
 )
 from src.hardware import (
     HardwareProfile,
+    format_vlm_setup_guide,
+    get_recommended_models,
     probe_hardware,
     resolve_model_tier,
 )
+from src.ui import GET_PWA_HTML, GET_PWA_MANIFEST
 from src.vision_pipeline import (
     EphemeralImageBuffer,
     ImagePayloadTooLargeError,
@@ -213,6 +217,13 @@ class NutriVaultAPI:
         query_params = urllib.parse.parse_qs(parsed_url.query)
 
         try:
+            # 0. GET / and GET /manifest.json (Progressive Web App)
+            if method == "GET" and route_path == "/":
+                return 200, GET_PWA_HTML()
+
+            if method == "GET" and route_path == "/manifest.json":
+                return 200, GET_PWA_MANIFEST()
+
             # 1. GET /api/v1/hardware
             if method == "GET" and route_path == "/api/v1/hardware":
                 return self._handle_get_hardware()
@@ -261,6 +272,29 @@ class NutriVaultAPI:
                     raise ValueError("Query parameter 'profile_id' is required.")
                 return self._handle_get_analytics(profile_id, days)
 
+            # 9. GET /api/v1/foods/search
+            if method == "GET" and route_path == "/api/v1/foods/search":
+                q_param = query_params.get("q", [None])[0]
+                if q_param is None or not q_param.strip():
+                    raise ValueError("Search query parameter 'q' must be a non-empty string.")
+                grams_param = query_params.get("grams", ["100.0"])[0]
+                try:
+                    grams = float(grams_param)
+                    if grams <= 0.0:
+                        raise ValueError("Query parameter 'grams' must be a float > 0.0.")
+                except (ValueError, TypeError):
+                    raise ValueError("Query parameter 'grams' must be a float > 0.0.")
+                limit_param = query_params.get("limit", ["10"])[0]
+                try:
+                    limit = int(limit_param)
+                    if limit < 1 or limit > 50:
+                        raise ValueError(
+                            "Query parameter 'limit' must be an integer between 1 and 50."
+                        )
+                except (ValueError, TypeError):
+                    raise ValueError("Query parameter 'limit' must be an integer between 1 and 50.")
+                return self._handle_search_foods(q=q_param.strip(), grams=grams, limit=limit)
+
             return 404, json.dumps({"error": f"Endpoint not found: {method} {path}"})
 
         except ClinicalAdvisoryViolationError as e:
@@ -294,8 +328,26 @@ class NutriVaultAPI:
             "vram_gb": self.hardware_profile.vram_gb,
             "cpu_cores": self.hardware_profile.cpu_cores,
             "active_tier_ceiling": self.active_tier_ceiling.value,
+            "recommended_models": get_recommended_models(self.active_tier_ceiling),
         }
         return 200, json.dumps(resp)
+
+    def _handle_search_foods(self, q: str, grams: float, limit: int) -> tuple[int, str]:
+        matches = self.grounding_engine.search_candidates(q, limit=limit)
+        results = []
+        for match in matches:
+            nutrients = calculate_linear_nutrients(match, grams)
+            results.append(
+                {
+                    "fdc_id": match.fdc_id,
+                    "description": match.description,
+                    "food_category": match.food_category,
+                    "preparation_state": match.preparation_state,
+                    "confidence_score": round(match.score, 2),
+                    "nutrients": asdict(nutrients),
+                }
+            )
+        return 200, json.dumps({"results": results})
 
     def _handle_list_profiles(self) -> tuple[int, str]:
         profiles = self.repo.list_profiles()
@@ -518,8 +570,16 @@ class NutriVaultHTTPHandler(http.server.BaseHTTPRequestHandler):
             if raw_body is not None and "multipart" in content_type:
                 raw_body[:] = b"\x00" * len(raw_body)
 
+        clean_path = self.path.split("?")[0]
+        if clean_path == "/":
+            response_content_type = "text/html; charset=utf-8"
+        elif clean_path == "/manifest.json":
+            response_content_type = "application/manifest+json"
+        else:
+            response_content_type = "application/json"
+
         self.send_response(status_code)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", response_content_type)
         self.send_header("Content-Length", str(len(response_body.encode("utf-8"))))
         self.end_headers()
         self.wfile.write(response_body.encode("utf-8"))
@@ -539,7 +599,7 @@ def run_server(
 
     os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
     conn = sqlite3.connect(db_path, check_same_thread=False)
-    init_db(conn)
+    init_db(conn, seed_defaults=True)
 
     api_instance = NutriVaultAPI(conn=conn)
 
@@ -557,23 +617,35 @@ def run_server(
         conn.close()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> None:
+    """CLI entrypoint for NutriVault service and VLM setup guidance."""
     import os
     import sys
+
+    args = sys.argv if argv is None else argv
+
+    if "--help" in args:
+        print("Usage: python -m src.api [host] [port] [db_path] | --vlm-guide")
+        sys.exit(0)
+
+    if "--vlm-guide" in args:
+        print(format_vlm_setup_guide())
+        sys.exit(0)
 
     host_arg = os.environ.get("NUTRIVAULT_HOST", "0.0.0.0")
     port_arg = int(os.environ.get("NUTRIVAULT_PORT", "8080"))
     db_arg = os.environ.get("NUTRIVAULT_DB", "data/nutrivault.db")
 
-    if "--help" in sys.argv:
-        print("Usage: python -m src.api [host] [port] [db_path]")
-        sys.exit(0)
-
-    if len(sys.argv) > 1:
-        host_arg = sys.argv[1]
-    if len(sys.argv) > 2:
-        port_arg = int(sys.argv[2])
-    if len(sys.argv) > 3:
-        db_arg = sys.argv[3]
+    non_flag_args = [a for a in args[1:] if not a.startswith("-")]
+    if len(non_flag_args) > 0:
+        host_arg = non_flag_args[0]
+    if len(non_flag_args) > 1:
+        port_arg = int(non_flag_args[1])
+    if len(non_flag_args) > 2:
+        db_arg = non_flag_args[2]
 
     run_server(host=host_arg, port=port_arg, db_path=db_arg)
+
+
+if __name__ == "__main__":
+    main()

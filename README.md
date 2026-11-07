@@ -31,13 +31,21 @@
 
 ### 1. Prerequisites
 
-Ensure you have `uv` installed:
+Ensure you have either `docker` or `uv` installed:
 ```bash
-# macOS / Linux
+# Option A: Install uv for local execution (macOS / Linux)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### 2. Clone & Setup Environment
+### 2. Option A: Turnkey Docker Container (60-Second Onboarding)
+
+Launch the complete application with pre-seeded USDA foods and persistent local storage in a single command:
+```bash
+docker compose up
+```
+Open **`http://localhost:8080`** in your browser. NutriVault is immediately ready to log meals via the instant USDA search bar—no local model downloads required!
+
+### 3. Option B: Local Python Development
 
 ```bash
 git clone https://github.com/codeja3/NutriVault.git
@@ -47,16 +55,21 @@ cd NutriVault
 uv venv
 source .venv/bin/activate
 uv sync
-```
 
-### 3. Run the Local Backend Daemon
-
-```bash
-# Starts the NutriVault HTTP server on 0.0.0.0:8080 (backed by data/nutrivault.db)
+# Starts the NutriVault server on 0.0.0.0:8080 (auto-seeds default USDA catalog)
 uv run python -m src.api
 ```
+Open **`http://localhost:8080`** in any desktop or mobile browser.
 
-### 4. Run the Test Suite
+### 4. Optional: Local Vision Model Setup Guide
+
+To enable ephemeral food photo analysis with local inference:
+```bash
+uv run python -m src.api --vlm-guide
+```
+This inspects your machine's CPU/RAM/VRAM/Metal/CUDA capabilities, resolves your allowable model tier (`tier_1_cpu`, `tier_2_mid`, `tier_3_high`), and prints the exact `llama-server` loopback command.
+
+### 5. Run the Test Suite
 
 NutriVault features a 100% offline, hermetic test suite executing against in-memory SQLite fixtures:
 
@@ -64,7 +77,7 @@ NutriVault features a 100% offline, hermetic test suite executing against in-mem
 uv run pytest
 ```
 
-### 5. Code Quality & Linting
+### 6. Code Quality & Linting
 
 ```bash
 uv run ruff check .

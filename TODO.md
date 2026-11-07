@@ -212,30 +212,30 @@
 
 ## Phase 11: User-Friendly Onboarding, Built-In Web UI (PWA) & Turnkey Deployment
 
-- [ ] **Task 11.1: Curated USDA Starter Seed & Hardware Model Recommendations**
-  - [ ] `RED`: Author tests in `tests/test_db.py` and `tests/test_hardware.py` asserting `seed_default_usda_foods(conn)` idempotently seeds staple USDA foods when `usda_foods` is empty, `init_db(conn, seed_defaults=True)` triggers seeding, and `get_recommended_models(tier)` / `format_vlm_setup_guide(profile)` return tier-appropriate GGUF recommendations and `llama-server` commands.
-  - [ ] `GREEN`: Implement `DEFAULT_USDA_FOODS` and `seed_default_usda_foods()` in `src/db.py`, and implement `TIER_RECOMMENDED_MODELS`, `get_recommended_models()`, and `format_vlm_setup_guide()` in `src/hardware.py`.
-  - [ ] `REFACTOR`: Ensure all existing unit tests remain unaffected when `init_db(conn)` is called with default `seed_defaults=False`, while `run_server()` auto-seeds on startup.
+- [x] **Task 11.1: Curated USDA Starter Seed & Hardware Model Recommendations**
+  - [x] `RED`: Author tests in `tests/test_db.py` and `tests/test_hardware.py` asserting `seed_default_usda_foods(conn)` idempotently seeds staple USDA foods when `usda_foods` is empty, `init_db(conn, seed_defaults=True)` triggers seeding, and `get_recommended_models(tier)` / `format_vlm_setup_guide(profile)` return tier-appropriate GGUF recommendations and `llama-server` commands.
+  - [x] `GREEN`: Implement `DEFAULT_USDA_FOODS` and `seed_default_usda_foods()` in `src/db.py`, and implement `TIER_RECOMMENDED_MODELS`, `get_recommended_models()`, and `format_vlm_setup_guide()` in `src/hardware.py`.
+  - [x] `REFACTOR`: Ensure all existing unit tests remain unaffected when `init_db(conn)` is called with default `seed_defaults=False`, while `run_server()` auto-seeds on startup.
 
-- [ ] **Task 11.2: Direct USDA Food Search & Scaling Endpoint (`GET /api/v1/foods/search`)**
-  - [ ] `RED`: Author tests in `tests/test_api.py` asserting `GET /api/v1/foods/search?q=brown+rice&grams=150&limit=5` returns ranked USDA items with deterministically scaled `NutrientProfile`, `GET /api/v1/hardware` includes `recommended_models`, and missing/blank `q` or invalid `grams`/`limit` return HTTP 400.
-  - [ ] `GREEN`: Implement `_handle_search_foods()` and update `_handle_get_hardware()` in `src/api.py`.
-  - [ ] `REFACTOR`: Validate query parameter bounds and verify `< 50 ms` cached search execution.
+- [x] **Task 11.2: Direct USDA Food Search & Scaling Endpoint (`GET /api/v1/foods/search`)**
+  - [x] `RED`: Author tests in `tests/test_api.py` asserting `GET /api/v1/foods/search?q=brown+rice&grams=150&limit=5` returns ranked USDA items with deterministically scaled `NutrientProfile`, `GET /api/v1/hardware` includes `recommended_models`, and missing/blank `q` or invalid `grams`/`limit` return HTTP 400.
+  - [x] `GREEN`: Implement `_handle_search_foods()` and update `_handle_get_hardware()` in `src/api.py`.
+  - [x] `REFACTOR`: Validate query parameter bounds and verify `< 50 ms` cached search execution.
 
-- [ ] **Task 11.3: Built-In Zero-Build Progressive Web App (`GET /` & `GET /manifest.json`)**
-  - [ ] `RED`: Author tests in `tests/test_api.py` asserting `GET /` returns `200 OK` with `text/html; charset=utf-8` containing the interactive NutriVault PWA UI (with zero external CDN URLs) and `GET /manifest.json` returns `200 OK` with `application/manifest+json`.
-  - [ ] `GREEN`: Create `src/ui.py` housing the self-contained HTML5/CSS3/ES6 PWA and manifest, and wire `GET /` and `GET /manifest.json` into `NutriVaultAPI` and `NutriVaultHTTPHandler` in `src/api.py`.
-  - [ ] `REFACTOR`: Verify all core workflows (profile switcher, clinical/athletic advisory banners, USDA instant search, photo upload, family batch portion sliders, and 7-day EMA dashboard) are wired cleanly in the UI.
+- [x] **Task 11.3: Built-In Zero-Build Progressive Web App (`GET /` & `GET /manifest.json`)**
+  - [x] `RED`: Author tests in `tests/test_api.py` asserting `GET /` returns `200 OK` with `text/html; charset=utf-8` containing the interactive NutriVault PWA UI (with zero external CDN URLs) and `GET /manifest.json` returns `200 OK` with `application/manifest+json`.
+  - [x] `GREEN`: Create `src/ui.py` housing the self-contained HTML5/CSS3/ES6 PWA and manifest, and wire `GET /` and `GET /manifest.json` into `NutriVaultAPI` and `NutriVaultHTTPHandler` in `src/api.py`.
+  - [x] `REFACTOR`: Verify all core workflows (profile switcher, clinical/athletic advisory banners, USDA instant search, photo upload, family batch portion sliders, and 7-day EMA dashboard) are wired cleanly in the UI.
 
-- [ ] **Task 11.4: Turnkey Docker Compose & CLI VLM Setup Guide (`--vlm-guide`)**
-  - [ ] `RED`: Author tests in `tests/test_env.py` and `tests/test_api.py` asserting `Dockerfile` and `docker-compose.yml` exist with valid port `8080` and `/app/data` volume configuration, and `python -m src.api --vlm-guide` outputs the hardware-matched setup guide and exits with code `0`.
-  - [ ] `GREEN`: Create `Dockerfile`, `.dockerignore`, and `docker-compose.yml` in repository root, and add `--vlm-guide` CLI handling in `src/api.py`.
-  - [ ] `REFACTOR`: Ensure container runs as non-root user and persists SQLite WAL files cleanly.
+- [x] **Task 11.4: Turnkey Docker Compose & CLI VLM Setup Guide (`--vlm-guide`)**
+  - [x] `RED`: Author tests in `tests/test_env.py` and `tests/test_api.py` asserting `Dockerfile` and `docker-compose.yml` exist with valid port `8080` and `/app/data` volume configuration, and `python -m src.api --vlm-guide` outputs the hardware-matched setup guide and exits with code `0`.
+  - [x] `GREEN`: Create `Dockerfile`, `.dockerignore`, and `docker-compose.yml` in repository root, and add `--vlm-guide` CLI handling in `src/api.py`.
+  - [x] `REFACTOR`: Ensure container runs as non-root user and persists SQLite WAL files cleanly.
 
-- [ ] **Task 11.5: Documentation & End-to-End Onboarding Synchronization**
-  - [ ] `RED`: Review `README.md`, `MANUAL.md`, and `MEMORY.md` against `PRD.md` v1.2.0 and `SPEC.md` v1.2.0.
-  - [ ] `GREEN`: Update `README.md` and `MANUAL.md` with 60-second browser UI quickstart, `docker compose up` instructions, `GET /api/v1/foods/search` documentation, and `--vlm-guide` usage; log Phase 11 in `MEMORY.md`.
-  - [ ] `REFACTOR`: Run full offline pytest suite and `ruff check` / `ruff format`.
+- [x] **Task 11.5: Documentation & End-to-End Onboarding Synchronization**
+  - [x] `RED`: Review `README.md`, `MANUAL.md`, and `MEMORY.md` against `PRD.md` v1.2.0 and `SPEC.md` v1.2.0.
+  - [x] `GREEN`: Update `README.md` and `MANUAL.md` with 60-second browser UI quickstart, `docker compose up` instructions, `GET /api/v1/foods/search` documentation, and `--vlm-guide` usage; log Phase 11 in `MEMORY.md`.
+  - [x] `REFACTOR`: Run full offline pytest suite and `ruff check` / `ruff format`.
 
 
 

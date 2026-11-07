@@ -3,7 +3,7 @@ import sqlite3
 
 import pytest
 
-from src.api import NutriVaultAPI
+from src.api import NutriVaultAPI, NutriVaultHTTPHandler
 from src.db import init_db
 from src.hardware import AcceleratorType, HardwareProfile
 from src.vision_pipeline import ExtractedCandidateItem
@@ -767,3 +767,147 @@ def test_api_rolling_analytics_bounds_feeding_intervals_to_days(api_instance):
     res_data = json.loads(body)
     assert len(res_data["feeding_intervals"]) == 2
     assert [i["date"] for i in res_data["feeding_intervals"]] == ["2026-10-27", "2026-10-28"]
+
+
+def test_api_get_hardware_includes_recommended_models(api_instance):
+    """GET /api/v1/hardware should include recommended_models list."""
+    status, body = api_instance.handle_request("GET", "/api/v1/hardware")
+    assert status == 200
+    data = json.loads(body)
+    assert "recommended_models" in data
+    assert isinstance(data["recommended_models"], list)
+    assert len(data["recommended_models"]) > 0
+
+
+def test_api_search_foods_valid(api_instance):
+    """GET /api/v1/foods/search should return ranked USDA matches scaled to grams."""
+    from src.db import seed_default_usda_foods
+
+    seed_default_usda_foods(api_instance.conn)
+
+    status, body = api_instance.handle_request(
+        "GET", "/api/v1/foods/search?q=brown+rice&grams=150&limit=5"
+    )
+    assert status == 200
+    data = json.loads(body)
+    assert "results" in data
+    results = data["results"]
+    assert len(results) >= 1
+    top = results[0]
+    assert "fdc_id" in top
+    assert "brown" in top["description"].lower() or "rice" in top["description"].lower()
+    assert "preparation_state" in top
+    assert "confidence_score" in top
+    assert "nutrients" in top
+    nutrients = top["nutrients"]
+    assert nutrients["grams"] == 150.0
+    assert nutrients["calories"] > 0
+    assert isinstance(nutrients["micronutrients"], dict)
+
+
+def test_api_search_foods_validation_errors(api_instance):
+    """GET /api/v1/foods/search must return 400 on invalid or missing query params."""
+    # Missing q
+    status1, _ = api_instance.handle_request("GET", "/api/v1/foods/search")
+    assert status1 == 400
+
+    # Blank q
+    status2, _ = api_instance.handle_request("GET", "/api/v1/foods/search?q=%20%20")
+    assert status2 == 400
+
+    # Negative grams
+    status3, _ = api_instance.handle_request("GET", "/api/v1/foods/search?q=rice&grams=-50")
+    assert status3 == 400
+
+    # Zero grams
+    status4, _ = api_instance.handle_request("GET", "/api/v1/foods/search?q=rice&grams=0")
+    assert status4 == 400
+
+    # Non-numeric grams
+    status5, _ = api_instance.handle_request("GET", "/api/v1/foods/search?q=rice&grams=abc")
+    assert status5 == 400
+
+    # Limit < 1
+    status6, _ = api_instance.handle_request("GET", "/api/v1/foods/search?q=rice&limit=0")
+    assert status6 == 400
+
+    # Limit > 50
+    status7, _ = api_instance.handle_request("GET", "/api/v1/foods/search?q=rice&limit=51")
+    assert status7 == 400
+
+    # Non-integer limit
+    status8, _ = api_instance.handle_request("GET", "/api/v1/foods/search?q=rice&limit=xyz")
+    assert status8 == 400
+
+
+def test_api_serves_pwa_html_with_zero_cdn_links(api_instance):
+    """GET / must return 200 OK with self-contained HTML and zero external scripts/styles."""
+    status, body = api_instance.handle_request("GET", "/")
+    assert status == 200
+    assert "<!DOCTYPE html>" in body or "<html" in body.lower()
+    assert "NutriVault" in body
+    # Strict Zero-WAN / Zero-CDN assertion: no external scripts, styles, or fonts
+    assert '<script src="http' not in body.lower()
+    assert '<link rel="stylesheet" href="http' not in body.lower()
+
+
+def test_api_serves_pwa_manifest(api_instance):
+    """GET /manifest.json must return 200 OK with valid PWA manifest JSON."""
+    status, body = api_instance.handle_request("GET", "/manifest.json")
+    assert status == 200
+    data = json.loads(body)
+    assert data["name"] == "NutriVault"
+    assert data["start_url"] == "/"
+    assert data["display"] == "standalone"
+
+
+def test_http_handler_content_types(api_instance):
+    """NutriVaultHTTPHandler must set correct Content-Type for HTML, manifest, and API."""
+    import io
+    from unittest.mock import Mock
+
+    handler = NutriVaultHTTPHandler.__new__(NutriVaultHTTPHandler)
+    handler.api = api_instance
+
+    recorded_headers = {}
+
+    def mock_send_header(name, val):
+        recorded_headers[name] = val
+
+    handler.send_response = Mock()
+    handler.send_header = Mock(side_effect=mock_send_header)
+    handler.end_headers = Mock()
+    handler.headers = {}
+    handler.request_version = "HTTP/1.1"
+
+    # 1. GET /
+    handler.path = "/"
+    handler.wfile = io.BytesIO()
+    handler.do_GET()
+    assert recorded_headers.get("Content-Type") == "text/html; charset=utf-8"
+
+    # 2. GET /manifest.json
+    handler.path = "/manifest.json"
+    handler.wfile = io.BytesIO()
+    handler.do_GET()
+    assert recorded_headers.get("Content-Type") == "application/manifest+json"
+
+    # 3. GET /api/v1/hardware
+    handler.path = "/api/v1/hardware"
+    handler.wfile = io.BytesIO()
+    handler.do_GET()
+    assert recorded_headers.get("Content-Type") == "application/json"
+
+
+def test_cli_vlm_guide_flag(capsys):
+    """Running CLI with --vlm-guide must output VLM setup instructions and exit 0."""
+    from src.api import main
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["src.api", "--vlm-guide"])
+
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert "NutriVault Local VLM Setup Guide" in captured.out
+    assert "llama-server" in captured.out
+    assert "--port 8081" in captured.out

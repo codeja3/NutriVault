@@ -1,0 +1,16 @@
+services:
+  nutrivault:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nutrivault:latest
+    container_name: nutrivault
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - NUTRIVAULT_HOST=0.0.0.0
+      - NUTRIVAULT_PORT=8080
+      - NUTRIVAULT_DB=/app/data/nutrivault.db
+    restart: unless-stopped

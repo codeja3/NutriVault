@@ -73,4 +73,11 @@
   * Task 9.6: Rolling analytics query validation rejecting `days < 1` with HTTP 400, and upfront ISO-8601 validation for allocation timestamps (`logged_at`).
   * Task 9.7: Refactoring and deduplicating dish building, insertion, and allocation loops in `BatchDishAllocator` (`_build_dish`, `_insert_dish`, `_insert_allocations`).
   * Task 10.1–10.5: Updated `SPEC.md` to v1.1.0 and remediated all Pass 3 findings: dual-schema USDA resolution (`usda` and `usda_reference`), dedicated loopback VLM port `8081` (`http://127.0.0.1:8081/v1/chat/completions`) preventing `:8080` daemon collision, context-managed `getbuffer()` in `EphemeralImageBuffer`, VLM retry on empty candidate array `[]` or blank `item_name`, 3-decimal micronutrient precision in `BatchDishAllocator._build_dish`, `days`-bounded `calculate_chrononutrition_windows`, and non-empty string/list Pydantic constraints (`min_length=1` with `str_strip_whitespace=True`).
-* **Current Status:** 100% contract requirements fulfilled, `SPEC.md` v1.1.0 locked, all Batch 1, Batch 2, and Pass 3 findings remediated, and verified across all 91 offline unit tests.
+  * Task 11.1–11.5: Transitioned NutriVault to full user-friendly operation (`PRD.md` v1.2.0 & `SPEC.md` v1.2.0):
+    * Implemented curated starter catalog (`DEFAULT_USDA_FOODS`, 30 staple foods) in `src/db.py` seeded idempotently on startup (`seed_default_usda_foods`).
+    * Implemented hardware-tailored model recommendations (`get_recommended_models`) and CLI guide generator (`format_vlm_setup_guide`) in `src/hardware.py`.
+    * Implemented instant USDA search and deterministic linear scaling endpoint (`GET /api/v1/foods/search`) in `src/api.py`.
+    * Implemented zero-build Progressive Web App (`src/ui.py`) serving responsive HTML5/CSS3/ES6 interface at `GET /` and web manifest at `GET /manifest.json` with zero external CDN dependencies.
+    * Implemented turnkey containerization (`Dockerfile`, `docker-compose.yml`, `.dockerignore`) with non-root user and persistent `/app/data` volume.
+    * Added `--vlm-guide` CLI flag in `src/api.py` for automated hardware probing and `llama-server` guidance.
+* **Current Status:** 100% contract requirements fulfilled, `PRD.md` v1.2.0 and `SPEC.md` v1.2.0 locked, Phase 11 complete, and verified across all 103 offline unit tests with clean Ruff lint and format.

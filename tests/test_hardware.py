@@ -179,6 +179,44 @@ def test_validate_model_selection():
         )
     assert exc_info2.value.error_code == "ERR_HARDWARE_TIER_EXCEEDED"
 
+
+def test_get_recommended_models():
+    """Verify get_recommended_models returns tier-appropriate GGUF models."""
+    from src.hardware import get_recommended_models
+
+    t1_models = get_recommended_models(HardwareTier.TIER_1_CPU)
+    assert any("SmolVLM" in m for m in t1_models)
+    assert any("moondream" in m.lower() for m in t1_models)
+
+    t2_models = get_recommended_models(HardwareTier.TIER_2_MID)
+    assert any("Qwen2.5-VL-7B" in m for m in t2_models)
+
+    t3_models = get_recommended_models(HardwareTier.TIER_3_HIGH)
+    assert any("Qwen2.5-VL-14B" in m for m in t3_models)
+
+
+def test_format_vlm_setup_guide():
+    """Verify format_vlm_setup_guide generates human-readable hardware-aware CLI instructions."""
+    from src.hardware import format_vlm_setup_guide
+
+    guide = format_vlm_setup_guide()
+    assert "NutriVault Local VLM Setup Guide" in guide
+    assert "llama-server" in guide
+    assert "--port 8081" in guide
+    assert "--host 127.0.0.1" in guide
+
+    # Test with custom profile
+    p_mid = HardwareProfile(
+        os_name="Darwin",
+        total_ram_gb=16.0,
+        accelerator=AcceleratorType.APPLE_SILICON,
+        vram_gb=16.0,
+        cpu_cores=10,
+    )
+    mid_guide = format_vlm_setup_guide(p_mid)
+    assert "tier_2_mid" in mid_guide
+    assert "Qwen2.5-VL-7B" in mid_guide
+
     # Tier 3 host allows Tier 1, 2, or 3
     validate_model_selection(
         requested_tier=HardwareTier.TIER_1_CPU,

@@ -376,3 +376,44 @@ def test_attach_usda_reference_rejects_unsafe_schema_name(tmp_path):
     usda_file = str(tmp_path / "usda_reference.db")
     with pytest.raises(ValueError, match="schema name"):
         attach_usda_reference(main_conn, usda_file, schema_name="usda; DROP TABLE profiles;--")
+
+
+def test_seed_default_usda_foods_idempotent():
+    """seed_default_usda_foods should seed staple items when empty and be idempotent."""
+    from src.db import seed_default_usda_foods
+
+    conn = sqlite3.connect(":memory:")
+    init_db(conn, seed_defaults=False)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) FROM usda_foods;")
+    assert cursor.fetchone()[0] == 0
+
+    inserted_count = seed_default_usda_foods(conn)
+    assert inserted_count >= 25
+
+    cursor.execute("SELECT COUNT(*) FROM usda_foods;")
+    assert cursor.fetchone()[0] == inserted_count
+
+    # Second call should be a no-op
+    second_count = seed_default_usda_foods(conn)
+    assert second_count == 0
+
+    # Verify staple item content
+    cursor.execute(
+        "SELECT description, calories_per_100g, preparation_state "
+        "FROM usda_foods WHERE description LIKE '%Rice, brown%';"
+    )
+    row = cursor.fetchone()
+    assert row is not None
+    assert row[1] > 0
+    assert row[2] == "cooked"
+
+
+def test_init_db_with_seed_defaults():
+    """init_db with seed_defaults=True should populate default USDA foods."""
+    conn = sqlite3.connect(":memory:")
+    init_db(conn, seed_defaults=True)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM usda_foods;")
+    assert cursor.fetchone()[0] >= 25

@@ -170,3 +170,65 @@ def validate_model_selection(
     max_level = TIER_HIERARCHY[max_allowed_tier]
     if requested_level > max_level:
         raise HardwareTierExceededError(requested=requested_tier, ceiling=max_allowed_tier)
+
+
+TIER_RECOMMENDED_MODELS: dict[HardwareTier, list[str]] = {
+    HardwareTier.TIER_1_CPU: [
+        "SmolVLM-500M-Instruct-Q8_0.gguf",
+        "moondream2-text-model-f16.gguf",
+        "MiniCPM-V-2_6-Q4_K_M.gguf",
+    ],
+    HardwareTier.TIER_2_MID: [
+        "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
+        "gemma-3-4b-it-Q8_0.gguf",
+    ],
+    HardwareTier.TIER_3_HIGH: [
+        "Qwen2.5-VL-14B-Instruct-Q4_K_M.gguf",
+        "Qwen2.5-VL-32B-Instruct-Q4_K_M.gguf",
+    ],
+}
+
+
+def get_recommended_models(tier: HardwareTier) -> list[str]:
+    """Return curated list of GGUF model filenames for given tier."""
+    return TIER_RECOMMENDED_MODELS.get(tier, TIER_RECOMMENDED_MODELS[HardwareTier.TIER_1_CPU])
+
+
+def format_vlm_setup_guide(profile: HardwareProfile | None = None) -> str:
+    """Generate a human-readable setup guide for the resolved hardware tier."""
+    if profile is None:
+        profile = probe_hardware()
+
+    tier = resolve_model_tier(profile)
+    models = get_recommended_models(tier)
+    primary_model = models[0] if models else "model.gguf"
+
+    lines = [
+        "===========================================================",
+        "               NutriVault Local VLM Setup Guide            ",
+        "===========================================================",
+        f"Detected Host OS:       {profile.os_name}",
+        f"Total System RAM:       {profile.total_ram_gb:.1f} GB",
+        f"Accelerator Backend:    {profile.accelerator.value.upper()}",
+        f"Dedicated / Unified VRAM: {profile.vram_gb:.1f} GB",
+        f"Active Model Tier:      {tier.value}",
+        "-----------------------------------------------------------",
+        "Recommended GGUF Vision Models:",
+    ]
+    for m in models:
+        lines.append(f"  • {m}")
+
+    lines.extend(
+        [
+            "-----------------------------------------------------------",
+            "Step 1: Download GGUF weights and mmproj file to ./models/",
+            f"  (Recommended for this tier: {primary_model})",
+            "",
+            "Step 2: Launch llama-server on loopback port 8081:",
+            f"  ./llama-server -m ./models/{primary_model} \\",
+            f"    --mmproj ./models/{primary_model.replace('.gguf', '-mmproj-f16.gguf')} \\",
+            "    --port 8081 --host 127.0.0.1",
+            "===========================================================",
+        ]
+    )
+    return "\n".join(lines)

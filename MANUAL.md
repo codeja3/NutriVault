@@ -62,11 +62,21 @@ uv run pytest
 
 ## 3. Running the Backend Service
 
-### Option A: Local Python API Service
+### Option A: Turnkey Docker Container (Recommended for Everyday Users)
+Launch the complete web application, pre-seeded USDA database, and persistent SQLite volume with one command:
+
+```bash
+docker compose up
+```
+
+Access the app immediately in your browser at `http://localhost:8080`.
+
+### Option B: Local Python Service
 NutriVault exposes a thread-safe local HTTP daemon (`ThreadingHTTPServer`) and REST router on port `8080` by default:
 
 ```bash
 # Default: host=0.0.0.0, port=8080, db_path=data/nutrivault.db
+# Automatically populates staple USDA reference foods on startup
 uv run python -m src.api
 
 # Custom positional arguments: [host] [port] [db_path]
@@ -76,7 +86,14 @@ uv run python -m src.api 127.0.0.1 8080 data/nutrivault.db
 NUTRIVAULT_HOST=0.0.0.0 NUTRIVAULT_PORT=8080 NUTRIVAULT_DB=data/nutrivault.db uv run python -m src.api
 ```
 
-### Option B: Local Inference Engine (`llama-server`)
+### Option C: Hardware-Tailored VLM Setup Guide (`--vlm-guide`)
+To view your detected hardware capabilities and the exact `llama-server` command:
+
+```bash
+uv run python -m src.api --vlm-guide
+```
+
+### Option D: Local Vision Inference Engine (`llama-server`)
 If you want to run multimodal vision extraction locally, launch `llama-server` on loopback port `8081`:
 
 ```bash
@@ -91,6 +108,14 @@ NutriVault automatically points to `http://127.0.0.1:8081/v1/chat/completions` t
 ---
 
 ## 4. Using the Application
+
+### 4.0 Built-In Web Application (Zero-Build PWA)
+Point your browser to `http://localhost:8080` to access the responsive web interface:
+* **Zero External Dependencies:** 100% offline, zero CDN scripts, stylesheets, or telemetry.
+* **Instant USDA Food Search:** Search foods immediately by keyword (e.g., `"brown rice"`, `"chicken breast"`) with real-time gram scaling without running a VLM.
+* **Interactive Meal Builder:** Add items, adjust portion weights, and inspect calories, macros, and micronutrients.
+* **Family Batch Cooking Splitter:** Allocate portion fractions ($\le 100\%$) across multiple household members with live sum validation.
+* **Rolling Analytics Dashboard:** View 7-day EMA averages, target adherence deltas, daily eating windows, and overnight fasting intervals.
 
 ### 4.1 Managing Household Profiles
 
@@ -244,11 +269,14 @@ sqlite3 data/nutrivault.db ".backup data/nutrivault_backup.db"
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/v1/hardware` | Returns detected compute specs and active tier ceiling. |
+| `GET` | `/` | Serves the zero-build Progressive Web App (PWA) HTML5 interface. |
+| `GET` | `/manifest.json` | Serves the PWA web app manifest. |
+| `GET` | `/api/v1/hardware` | Returns detected compute specs, tier ceiling, and recommended models. |
 | `GET` | `/api/v1/profiles` | Lists all active household profiles. |
 | `POST` | `/api/v1/profiles` | Creates a new profile. |
 | `PUT` | `/api/v1/profiles/{id}/targets` | Sets active target envelope (atomically deactivating old). |
 | `POST` | `/api/v1/advisory/fitness-targets` | Generates athletic targets with advisory wire (or 403 on clinical). |
+| `GET` | `/api/v1/foods/search` | Instant USDA food search with real-time linear gram scaling. |
 | `POST` | `/api/v1/meals/parse-image` | Multipart in-memory VLM image parsing and USDA grounding. |
 | `POST` | `/api/v1/meals/commit` | Persists shared dish and logs fractional portions to family members. |
 | `GET` | `/api/v1/analytics/rolling` | Computes 7-day EMA, target deltas, and feeding/fasting intervals. |

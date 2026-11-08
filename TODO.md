@@ -251,14 +251,14 @@
   - [x] `GREEN`: Update `src/db.py` (`usda_foods` DDL, idempotent `ALTER TABLE` check in `init_db`, barcodes in `DEFAULT_USDA_FOODS`) and `src/grounding.py` (`normalize_barcode`, `lookup_barcode`, `register_barcode`, `export_offline_catalog`, and `BarcodeNotFoundError`).
   - [x] `REFACTOR`: Ensure `GroundingEngine` cache invalidates cleanly on `register_barcode()` and supports attached `usda`/`usda_reference` schemas.
 
-- [ ] **Task 12.3: Barcode Lookup, Custom Barcode Registration & Offline Batch Sync API Endpoints**
-  - [ ] `RED`: Author offline contract tests in `tests/test_api.py` asserting:
+- [x] **Task 12.3: Barcode Lookup, Custom Barcode Registration & Offline Batch Sync API Endpoints**
+  - [x] `RED`: Author offline contract tests in `tests/test_api.py` asserting:
     - `GET /api/v1/foods/catalog` returns the full local food & barcode catalog for client IndexedDB caching.
     - `GET /api/v1/foods/barcode/{code}?grams=150` returns scaled nutrients (`200 OK`), `404 ERR_BARCODE_NOT_FOUND` on unknown barcode, and `400` on invalid barcode/grams.
     - `PUT /api/v1/foods/barcode/{code}` registers/updates a custom barcode in `usda_foods` (`200 OK`) and makes subsequent `GET /api/v1/foods/barcode/{code}` hits succeed immediately.
     - `POST /api/v1/sync/batch` processes offline-queued meals (`queued_meals`) and deferred offline barcode scans (`queued_barcodes`) preserving original `logged_at` timestamps, while returning any unrecognized barcodes in `unresolved_barcodes` without failing valid items in the batch.
-  - [ ] `GREEN`: Implement Pydantic models (`BarcodeRegisterRequest`, `QueuedBarcodeItemRequest`, `OfflineSyncBatchRequest`) and route handlers (`_handle_get_catalog`, `_handle_get_barcode`, `_handle_put_barcode`, `_handle_sync_batch`) in `src/api.py`.
-  - [ ] `REFACTOR`: Verify thread-safe locking and clean HTTP error mapping across all new routes.
+  - [x] `GREEN`: Implement Pydantic models (`BarcodeRegisterRequest`, `QueuedBarcodeItemRequest`, `OfflineSyncBatchRequest`) and route handlers (`_handle_get_catalog`, `_handle_get_barcode`, `_handle_put_barcode`, `_handle_sync_batch`) in `src/api.py`.
+  - [x] `REFACTOR`: Verify thread-safe locking and clean HTTP error mapping across all new routes.
 
 - [ ] **Task 12.4: Offline-First PWA Service Worker (`GET /sw.js`), IndexedDB Queue & In-Browser Camera Barcode Scanner (`src/ui.py`)**
   - [ ] `RED`: Author tests in `tests/test_api.py` asserting `GET /sw.js` returns `200 OK` with `application/javascript; charset=utf-8` (and zero external URLs), and `GET /` includes the offline IndexedDB queue (`nutrivault_offline_db`), Service Worker registration, "Snap & Sync Later" offline queue controls, and in-browser `BarcodeDetector` scanner + Tier-3 custom barcode registration UI.

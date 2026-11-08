@@ -990,3 +990,196 @@ def test_http_handler_non_200_on_root_returns_json_content_type(api_instance):
     handler.do_POST()
     handler.send_response.assert_called_once_with(404)
     assert recorded_headers.get("Content-Type") == "application/json"
+
+
+def test_api_get_catalog(api_instance):
+    """GET /api/v1/foods/catalog returns full reference catalog for offline client caching."""
+    from src.db import seed_default_usda_foods
+
+    seed_default_usda_foods(api_instance.conn)
+    api_instance.grounding_engine.invalidate_cache()
+
+    status, body = api_instance.handle_request("GET", "/api/v1/foods/catalog")
+    assert status == 200
+    data = json.loads(body)
+    assert "items" in data
+    assert isinstance(data["items"], list)
+    assert len(data["items"]) >= 25
+    first = data["items"][0]
+    assert "fdc_id" in first
+    assert "description" in first
+    assert "barcode" in first
+    assert "calories_per_100g" in first
+
+
+def test_api_get_barcode_and_not_found(api_instance):
+    """GET /api/v1/foods/barcode/{code} returns scaled food item or 404 ERR_BARCODE_NOT_FOUND."""
+    from src.db import seed_default_usda_foods
+
+    seed_default_usda_foods(api_instance.conn)
+    api_instance.grounding_engine.invalidate_cache()
+
+    # Seeded barcode (Quaker Oats: 0030000010204)
+    status, body = api_instance.handle_request(
+        "GET", "/api/v1/foods/barcode/0030000010204?grams=200"
+    )
+    assert status == 200
+    data = json.loads(body)
+    assert data["barcode"] == "0030000010204"
+    assert data["nutrients"]["grams"] == 200.0
+    assert data["nutrients"]["calories"] == 142.0  # 71 * 2
+
+    # Unrecognized barcode -> 404 ERR_BARCODE_NOT_FOUND
+    status, body = api_instance.handle_request("GET", "/api/v1/foods/barcode/9999999999999")
+    assert status == 404
+    data = json.loads(body)
+    assert data.get("error_code") == "ERR_BARCODE_NOT_FOUND"
+
+    # Malformed barcode -> 400
+    status, body = api_instance.handle_request("GET", "/api/v1/foods/barcode/12")
+    assert status == 400
+
+    # Negative grams -> 400
+    status, body = api_instance.handle_request(
+        "GET", "/api/v1/foods/barcode/0030000010204?grams=-10"
+    )
+    assert status == 400
+
+
+def test_api_put_barcode_register(api_instance):
+    """PUT /api/v1/foods/barcode/{code} registers custom food item and enables query."""
+    payload = {
+        "description": "Nonfat Greek Yogurt",
+        "calories_per_100g": 59.0,
+        "protein_g_per_100g": 10.0,
+        "carbs_g_per_100g": 3.6,
+        "fat_g_per_100g": 0.4,
+        "fiber_g_per_100g": 0.0,
+        "micros_per_100g": {"calcium_mg": 110.0},
+    }
+    status, body = api_instance.handle_request(
+        "PUT", "/api/v1/foods/barcode/078742351896", body=json.dumps(payload)
+    )
+    assert status == 200
+    data = json.loads(body)
+    assert data["barcode"] == "078742351896"
+    assert data["nutrients"]["calories"] == 59.0
+
+    # Query again with portion scaling
+    status, body = api_instance.handle_request(
+        "GET", "/api/v1/foods/barcode/078742351896?grams=200"
+    )
+    assert status == 200
+    queried = json.loads(body)
+    assert queried["nutrients"]["calories"] == 118.0
+    assert queried["nutrients"]["protein_g"] == 20.0
+
+    # Invalid payload (empty description) -> 400
+    bad_payload = dict(payload)
+    bad_payload["description"] = "   "
+    status, _ = api_instance.handle_request(
+        "PUT", "/api/v1/foods/barcode/078742351896", body=json.dumps(bad_payload)
+    )
+    assert status == 400
+
+
+def test_api_sync_batch_endpoint(api_instance):
+    """POST /api/v1/sync/batch commits queued meals and barcodes preserving logged_at."""
+    from src.db import seed_default_usda_foods
+
+    seed_default_usda_foods(api_instance.conn)
+    api_instance.grounding_engine.invalidate_cache()
+
+    # 1. Create a profile
+    _, p_body = api_instance.handle_request(
+        "POST", "/api/v1/profiles", json.dumps({"name": "Sync User", "profile_type": "standard"})
+    )
+    prof_id = json.loads(p_body)["id"]
+
+    batch_payload = {
+        "queued_meals": [
+            {
+                "dish_name": "Offline Oatmeal",
+                "ingredients": [
+                    {
+                        "item_name": "Rolled Oats",
+                        "fdc_id": 2001,
+                        "grams": 80.0,
+                        "calories": 303.2,
+                        "protein_g": 10.5,
+                        "carbs_g": 54.2,
+                        "fat_g": 5.2,
+                        "fiber_g": 8.0,
+                        "micros": {},
+                    }
+                ],
+                "allocations": [
+                    {
+                        "profile_id": prof_id,
+                        "fraction": 1.0,
+                        "meal_type": "breakfast",
+                        "logged_at": "2026-11-08T08:15:00",
+                    }
+                ],
+            }
+        ],
+        "queued_barcodes": [
+            {
+                "barcode": "0030000010204",  # Quaker Oats (known)
+                "grams": 100.0,
+                "dish_name": "Scanned Quaker Oats",
+                "allocations": [
+                    {
+                        "profile_id": prof_id,
+                        "fraction": 1.0,
+                        "meal_type": "snack",
+                        "logged_at": "2026-11-08T15:30:00",
+                    }
+                ],
+            },
+            {
+                "barcode": "9999999999999",  # Unknown barcode
+                "grams": 50.0,
+                "allocations": [
+                    {
+                        "profile_id": prof_id,
+                        "fraction": 1.0,
+                        "meal_type": "snack",
+                        "logged_at": "2026-11-08T16:00:00",
+                    }
+                ],
+            },
+        ],
+    }
+
+    status, body = api_instance.handle_request(
+        "POST", "/api/v1/sync/batch", body=json.dumps(batch_payload)
+    )
+    assert status == 200
+    res = json.loads(body)
+    assert res["synced_meals_count"] == 2
+    assert len(res["meal_log_ids"]) == 2
+    assert len(res["unresolved_barcodes"]) == 1
+    assert res["unresolved_barcodes"][0]["barcode"] == "9999999999999"
+
+    # Verify meal_logs table entries with preserved timestamps
+    cursor = api_instance.conn.cursor()
+    cursor.execute(
+        """
+        SELECT d.name, ml.meal_type, ml.logged_at
+        FROM meal_logs ml
+        JOIN dishes d ON ml.dish_id = d.id
+        WHERE ml.profile_id = ?
+        ORDER BY ml.logged_at ASC;
+        """,
+        (prof_id,),
+    )
+    logs = cursor.fetchall()
+    assert len(logs) == 2
+    assert logs[0][0] == "Offline Oatmeal"
+    assert logs[0][1] == "breakfast"
+    assert logs[0][2] == "2026-11-08T08:15:00"
+
+    assert logs[1][0] == "Scanned Quaker Oats"
+    assert logs[1][1] == "snack"
+    assert logs[1][2] == "2026-11-08T15:30:00"

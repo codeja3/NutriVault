@@ -28,8 +28,10 @@ from src.batch_allocator import (
 )
 from src.db import ProfileRepository, init_db
 from src.grounding import (
+    BarcodeNotFoundError,
     GroundingEngine,
     calculate_linear_nutrients,
+    normalize_barcode,
     resolve_food_item,
 )
 from src.hardware import (
@@ -121,6 +123,36 @@ class MealCommitRequest(BaseModel):
     dish_name: str = Field(min_length=1)
     ingredients: list[DishIngredientRequest] = Field(min_length=1)
     allocations: list[ProfilePortionAllocationRequest] = Field(min_length=1)
+
+
+class BarcodeRegisterRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    description: str = Field(min_length=1)
+    calories_per_100g: float = Field(ge=0.0)
+    protein_g_per_100g: float = Field(ge=0.0)
+    carbs_g_per_100g: float = Field(ge=0.0)
+    fat_g_per_100g: float = Field(ge=0.0)
+    fiber_g_per_100g: float = Field(default=0.0, ge=0.0)
+    micros_per_100g: dict[str, float] = Field(default_factory=dict)
+    food_category: str = "Packaged Foods"
+    preparation_state: str = "prepared"
+
+
+class QueuedBarcodeItemRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    barcode: str = Field(min_length=4)
+    grams: float = Field(gt=0.0)
+    dish_name: str | None = None
+    allocations: list[ProfilePortionAllocationRequest] = Field(min_length=1)
+
+
+class OfflineSyncBatchRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    queued_meals: list[MealCommitRequest] = Field(default_factory=list)
+    queued_barcodes: list[QueuedBarcodeItemRequest] = Field(default_factory=list)
 
 
 def _extract_image_bytearray(raw_body: bytes | bytearray, content_type: str) -> bytearray:
@@ -297,6 +329,32 @@ class NutriVaultAPI:
                     raise ValueError("Query parameter 'limit' must be an integer between 1 and 50.")
                 return self._handle_search_foods(q=q_param.strip(), grams=grams, limit=limit)
 
+            # 10. GET /api/v1/foods/catalog
+            if method == "GET" and route_path == "/api/v1/foods/catalog":
+                return self._handle_get_catalog()
+
+            # 11. GET & PUT /api/v1/foods/barcode/{code}
+            barcode_match = re.match(r"^/api/v1/foods/barcode/([^/]+)$", route_path)
+            if barcode_match:
+                barcode_code = barcode_match.group(1)
+                if method == "GET":
+                    grams_param = query_params.get("grams", ["100.0"])[0]
+                    try:
+                        grams = float(grams_param)
+                        if grams <= 0.0:
+                            raise ValueError("Query parameter 'grams' must be a float > 0.0.")
+                    except (ValueError, TypeError):
+                        raise ValueError("Query parameter 'grams' must be a float > 0.0.")
+                    return self._handle_get_barcode(barcode_code, grams)
+                if method == "PUT":
+                    data = json.loads(body or "{}")
+                    return self._handle_put_barcode(barcode_code, data)
+
+            # 12. POST /api/v1/sync/batch
+            if method == "POST" and route_path == "/api/v1/sync/batch":
+                data = json.loads(body or "{}")
+                return self._handle_sync_batch(data)
+
             return 404, json.dumps({"error": f"Endpoint not found: {method} {path}"})
 
         except ClinicalAdvisoryViolationError as e:
@@ -305,6 +363,8 @@ class NutriVaultAPI:
             )
         except InvalidPortionSumError as e:
             return 400, json.dumps({"error_code": e.error_code, "error": str(e)})
+        except BarcodeNotFoundError as e:
+            return 404, json.dumps({"error_code": e.error_code, "error": str(e)})
         except (ValidationError, json.JSONDecodeError) as e:
             return 400, json.dumps({"error": str(e)})
         except ImagePayloadTooLargeError as e:
@@ -504,6 +564,125 @@ class NutriVaultAPI:
         resp["feeding_intervals"] = [asdict(interval) for interval in feeding_intervals]
 
         return 200, json.dumps(resp)
+
+    def _handle_get_catalog(self) -> tuple[int, str]:
+        catalog = self.grounding_engine.export_offline_catalog()
+        return 200, json.dumps({"items": catalog})
+
+    def _handle_get_barcode(self, code: str, grams: float) -> tuple[int, str]:
+        norm_code = normalize_barcode(code)
+        match = self.grounding_engine.lookup_barcode(norm_code, grams=grams)
+        if not match:
+            raise BarcodeNotFoundError(f"Barcode '{code}' not found in food catalog.")
+        return 200, json.dumps(asdict(match))
+
+    def _handle_put_barcode(self, code: str, data: dict[str, Any]) -> tuple[int, str]:
+        norm_code = normalize_barcode(code)
+        req = BarcodeRegisterRequest.model_validate(data)
+        registered = self.grounding_engine.register_barcode(
+            barcode=norm_code,
+            description=req.description,
+            calories_per_100g=req.calories_per_100g,
+            protein_g_per_100g=req.protein_g_per_100g,
+            carbs_g_per_100g=req.carbs_g_per_100g,
+            fat_g_per_100g=req.fat_g_per_100g,
+            fiber_g_per_100g=req.fiber_g_per_100g,
+            micros_per_100g=req.micros_per_100g,
+            food_category=req.food_category,
+            preparation_state=req.preparation_state,
+        )
+        return 200, json.dumps(asdict(registered))
+
+    def _handle_sync_batch(self, data: dict[str, Any]) -> tuple[int, str]:
+        req = OfflineSyncBatchRequest.model_validate(data)
+        all_log_ids: list[str] = []
+        synced_meals_count = 0
+        unresolved: list[dict[str, Any]] = []
+
+        for qm in req.queued_meals:
+            ingredients = [
+                DishIngredient(
+                    item_name=ing.item_name,
+                    fdc_id=ing.fdc_id,
+                    grams=ing.grams,
+                    calories=ing.calories,
+                    protein_g=ing.protein_g,
+                    carbs_g=ing.carbs_g,
+                    fat_g=ing.fat_g,
+                    fiber_g=ing.fiber_g,
+                    micros=ing.micros,
+                )
+                for ing in qm.ingredients
+            ]
+            allocations = [
+                ProfilePortionAllocation(
+                    profile_id=a.profile_id,
+                    fraction=a.fraction,
+                    meal_type=a.meal_type,
+                    logged_at=a.logged_at,
+                )
+                for a in qm.allocations
+            ]
+            dish, log_ids = self.batch_allocator.commit_meal(
+                name=qm.dish_name,
+                ingredients=ingredients,
+                allocations=allocations,
+            )
+            all_log_ids.extend(log_ids)
+            synced_meals_count += 1
+
+        for qb in req.queued_barcodes:
+            candidate = None
+            try:
+                candidate = self.grounding_engine.lookup_barcode(qb.barcode, grams=qb.grams)
+            except ValueError:
+                candidate = None
+
+            if candidate is not None:
+                dish_name = qb.dish_name or candidate.description
+                ingredient = DishIngredient(
+                    item_name=candidate.description,
+                    fdc_id=candidate.fdc_id,
+                    grams=candidate.nutrients.grams,
+                    calories=candidate.nutrients.calories,
+                    protein_g=candidate.nutrients.protein_g,
+                    carbs_g=candidate.nutrients.carbs_g,
+                    fat_g=candidate.nutrients.fat_g,
+                    fiber_g=candidate.nutrients.fiber_g,
+                    micros=candidate.nutrients.micronutrients,
+                )
+                allocations = [
+                    ProfilePortionAllocation(
+                        profile_id=a.profile_id,
+                        fraction=a.fraction,
+                        meal_type=a.meal_type,
+                        logged_at=a.logged_at,
+                    )
+                    for a in qb.allocations
+                ]
+                dish, log_ids = self.batch_allocator.commit_meal(
+                    name=dish_name,
+                    ingredients=[ingredient],
+                    allocations=allocations,
+                )
+                all_log_ids.extend(log_ids)
+                synced_meals_count += 1
+            else:
+                unresolved.append(
+                    {
+                        "barcode": qb.barcode,
+                        "grams": qb.grams,
+                        "allocations": [a.model_dump() for a in qb.allocations],
+                    }
+                )
+
+        return 200, json.dumps(
+            {
+                "synced_meals_count": synced_meals_count,
+                "meal_log_ids": all_log_ids,
+                "unresolved_barcodes": unresolved,
+            }
+        )
 
 
 class NutriVaultHTTPHandler(http.server.BaseHTTPRequestHandler):

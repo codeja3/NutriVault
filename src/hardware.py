@@ -189,6 +189,77 @@ TIER_RECOMMENDED_MODELS: dict[HardwareTier, list[str]] = {
 }
 
 
+@dataclass(frozen=True)
+class PredefinedVLMModel:
+    tier: HardwareTier
+    name: str
+    hf_repo: str
+    model_file: str
+    mmproj_file: str
+    approx_size_mb: int
+    sha256_model: str
+    sha256_mmproj: str
+
+
+PREDEFINED_VLM_CATALOG: dict[HardwareTier, PredefinedVLMModel] = {
+    HardwareTier.TIER_1_CPU: PredefinedVLMModel(
+        tier=HardwareTier.TIER_1_CPU,
+        name="SmolVLM-500M-Instruct-Q8_0",
+        hf_repo="ggml-org/SmolVLM-500M-Instruct-GGUF",
+        model_file="SmolVLM-500M-Instruct-Q8_0.gguf",
+        mmproj_file="mmproj-SmolVLM-500M-Instruct-Q8_0.gguf",
+        approx_size_mb=550,
+        sha256_model="e29851e944ef30e5d070b4ba79ff578a08d6d6232598380486c8742d8ca19c72",
+        sha256_mmproj="c8f828a6e8df81cbca3d6dfb37c4aa22ea8910bba1f6e24db10ce3309a96e14a",
+    ),
+    HardwareTier.TIER_2_MID: PredefinedVLMModel(
+        tier=HardwareTier.TIER_2_MID,
+        name="Qwen2.5-VL-3B-Instruct-Q4_K_M",
+        hf_repo="ggml-org/Qwen2.5-VL-3B-Instruct-GGUF",
+        model_file="Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf",
+        mmproj_file="mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf",
+        approx_size_mb=2200,
+        sha256_model="1c9f8021c33be8b327b7a1e05d04f2f45ec4092b604085465e9d99c75cf7015d",
+        sha256_mmproj="55e9668d374f1d4f2bc158b09f2d659ad1254dc59be523277e98d9ba8d42d3c9",
+    ),
+    HardwareTier.TIER_3_HIGH: PredefinedVLMModel(
+        tier=HardwareTier.TIER_3_HIGH,
+        name="Qwen2.5-VL-7B-Instruct-Q4_K_M",
+        hf_repo="ggml-org/Qwen2.5-VL-7B-Instruct-GGUF",
+        model_file="Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
+        mmproj_file="mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf",
+        approx_size_mb=5000,
+        sha256_model="78a876a392815e1da74d3fb0b3be373b98c368d19abda4e1cc5187e5cc56c80c",
+        sha256_mmproj="7f7e9154a86f2b7b2585f096245fc307c0ef7be7f1bfa98e3b5df51ee8eb419c",
+    ),
+}
+
+
+def get_default_vlm_spec(tier: HardwareTier) -> PredefinedVLMModel:
+    """Return the pinned default PredefinedVLMModel for the given tier."""
+    return PREDEFINED_VLM_CATALOG.get(tier, PREDEFINED_VLM_CATALOG[HardwareTier.TIER_1_CPU])
+
+
+def build_managed_vlm_command(
+    tier: HardwareTier,
+    port: int = 8081,
+    host: str = "127.0.0.1",
+) -> list[str]:
+    """Build the zero-manual-download llama-server command argv for the resolved tier."""
+    spec = get_default_vlm_spec(tier)
+    return [
+        "./llama-server",
+        "--hf-repo",
+        spec.hf_repo,
+        "--hf-file",
+        spec.model_file,
+        "--port",
+        str(port),
+        "--host",
+        host,
+    ]
+
+
 def get_recommended_models(tier: HardwareTier) -> list[str]:
     """Return curated list of GGUF model filenames for given tier."""
     return TIER_RECOMMENDED_MODELS.get(tier, TIER_RECOMMENDED_MODELS[HardwareTier.TIER_1_CPU])
@@ -200,34 +271,34 @@ def format_vlm_setup_guide(profile: HardwareProfile | None = None) -> str:
         profile = probe_hardware()
 
     tier = resolve_model_tier(profile)
+    spec = get_default_vlm_spec(tier)
     models = get_recommended_models(tier)
-    primary_model = models[0] if models else "model.gguf"
+    cmd = build_managed_vlm_command(tier, port=8081, host="127.0.0.1")
+    cmd_str = " ".join(cmd)
 
     lines = [
         "===========================================================",
         "               NutriVault Local VLM Setup Guide            ",
         "===========================================================",
-        f"Detected Host OS:       {profile.os_name}",
-        f"Total System RAM:       {profile.total_ram_gb:.1f} GB",
-        f"Accelerator Backend:    {profile.accelerator.value.upper()}",
+        f"Detected Host OS:         {profile.os_name}",
+        f"Total System RAM:         {profile.total_ram_gb:.1f} GB",
+        f"Accelerator Backend:      {profile.accelerator.value.upper()}",
         f"Dedicated / Unified VRAM: {profile.vram_gb:.1f} GB",
-        f"Active Model Tier:      {tier.value}",
+        f"Active Model Tier:        {tier.value}",
         "-----------------------------------------------------------",
-        "Recommended GGUF Vision Models:",
+        f"Predefined Default VLM:   {spec.name} (~{spec.approx_size_mb} MB)",
+        f"HuggingFace Repository:   {spec.hf_repo}",
+        "-----------------------------------------------------------",
+        "One-Command Automatic Launch (zero file hunting):",
+        f"  {cmd_str}",
+        "-----------------------------------------------------------",
+        "Alternative GGUF Vision Models for this tier:",
     ]
     for m in models:
         lines.append(f"  • {m}")
 
     lines.extend(
         [
-            "-----------------------------------------------------------",
-            "Step 1: Download GGUF weights and mmproj file to ./models/",
-            f"  (Recommended for this tier: {primary_model})",
-            "",
-            "Step 2: Launch llama-server on loopback port 8081:",
-            f"  ./llama-server -m ./models/{primary_model} \\",
-            f"    --mmproj ./models/{primary_model.replace('.gguf', '-mmproj-f16.gguf')} \\",
-            "    --port 8081 --host 127.0.0.1",
             "===========================================================",
         ]
     )

@@ -779,6 +779,21 @@ def test_api_get_hardware_includes_recommended_models(api_instance):
     assert len(data["recommended_models"]) > 0
 
 
+def test_api_get_hardware_includes_predefined_vlm_and_command(api_instance):
+    """GET /api/v1/hardware should include default_vlm spec and managed_vlm_command."""
+    status, body = api_instance.handle_request("GET", "/api/v1/hardware")
+    assert status == 200
+    data = json.loads(body)
+    assert "default_vlm" in data
+    assert "managed_vlm_command" in data
+    vlm = data["default_vlm"]
+    assert "name" in vlm
+    assert "hf_repo" in vlm
+    assert "approx_size_mb" in vlm
+    cmd = data["managed_vlm_command"]
+    assert "--hf-repo" in cmd
+
+
 def test_api_search_foods_valid(api_instance):
     """GET /api/v1/foods/search should return ranked USDA matches scaled to grams."""
     from src.db import seed_default_usda_foods

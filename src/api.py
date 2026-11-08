@@ -34,7 +34,9 @@ from src.grounding import (
 )
 from src.hardware import (
     HardwareProfile,
+    build_managed_vlm_command,
     format_vlm_setup_guide,
+    get_default_vlm_spec,
     get_recommended_models,
     probe_hardware,
     resolve_model_tier,
@@ -321,6 +323,10 @@ class NutriVaultAPI:
             return 500, json.dumps({"error": "Internal server error."})
 
     def _handle_get_hardware(self) -> tuple[int, str]:
+        default_vlm = get_default_vlm_spec(self.active_tier_ceiling)
+        cmd_tokens = build_managed_vlm_command(
+            self.active_tier_ceiling, port=8081, host="127.0.0.1"
+        )
         resp = {
             "os_name": self.hardware_profile.os_name,
             "total_ram_gb": self.hardware_profile.total_ram_gb,
@@ -329,6 +335,8 @@ class NutriVaultAPI:
             "cpu_cores": self.hardware_profile.cpu_cores,
             "active_tier_ceiling": self.active_tier_ceiling.value,
             "recommended_models": get_recommended_models(self.active_tier_ceiling),
+            "default_vlm": asdict(default_vlm),
+            "managed_vlm_command": " ".join(cmd_tokens),
         }
         return 200, json.dumps(resp)
 

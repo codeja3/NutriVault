@@ -241,10 +241,10 @@
 
 ## Phase 12: One-Stop-Shop Predefined VLM Catalog, Offline-First "Snap & Sync Later" PWA & 3-Tier Barcode Scanner
 
-- [ ] **Task 12.1: Predefined Tier-Matched VLM Catalog & Zero-Download-Hunt Command Builder**
-  - [ ] `RED`: Author tests in `tests/test_hardware.py` asserting `PredefinedVLMModel`, `PREDEFINED_VLM_CATALOG` (mapping `tier_1_cpu` $\rightarrow$ `SmolVLM-500M-Instruct-Q8_0`, `tier_2_mid` $\rightarrow$ `Qwen2.5-VL-3B-Instruct-Q4_K_M`, `tier_3_high` $\rightarrow$ `Qwen2.5-VL-7B-Instruct-Q4_K_M`), `get_default_vlm_spec(tier)`, and `build_managed_vlm_command(tier)` emitting `llama-server --hf-repo ... --hf-file ...`.
-  - [ ] `GREEN`: Implement `PredefinedVLMModel`, `PREDEFINED_VLM_CATALOG`, `get_default_vlm_spec()`, and `build_managed_vlm_command()` in `src/hardware.py`, and expose `default_vlm` and `managed_vlm_command` in `GET /api/v1/hardware` (`src/api.py`).
-  - [ ] `REFACTOR`: Update `format_vlm_setup_guide()` to include the predefined `--hf-repo` command and approximate download size.
+- [x] **Task 12.1: Predefined Tier-Matched VLM Catalog & Zero-Download-Hunt Command Builder**
+  - [x] `RED`: Author tests in `tests/test_hardware.py` asserting `PredefinedVLMModel`, `PREDEFINED_VLM_CATALOG` (mapping `tier_1_cpu` $\rightarrow$ `SmolVLM-500M-Instruct-Q8_0`, `tier_2_mid` $\rightarrow$ `Qwen2.5-VL-3B-Instruct-Q4_K_M`, `tier_3_high` $\rightarrow$ `Qwen2.5-VL-7B-Instruct-Q4_K_M`), `get_default_vlm_spec(tier)`, and `build_managed_vlm_command(tier)` emitting `llama-server --hf-repo ... --hf-file ...`.
+  - [x] `GREEN`: Implement `PredefinedVLMModel`, `PREDEFINED_VLM_CATALOG`, `get_default_vlm_spec()`, and `build_managed_vlm_command()` in `src/hardware.py`, and expose `default_vlm` and `managed_vlm_command` in `GET /api/v1/hardware` (`src/api.py`).
+  - [x] `REFACTOR`: Update `format_vlm_setup_guide()` to include the predefined `--hf-repo` command and approximate download size.
 
 - [ ] **Task 12.2: SQLite `barcode` Schema Migration, Seeded Staple Barcodes & Grounding Barcode Engine**
   - [ ] `RED`: Author tests in `tests/test_db.py` and `tests/test_grounding.py` asserting idempotent `usda_foods.barcode` column creation/migration, `idx_usda_foods_barcode` index, seeded UPC/EAN barcodes in `DEFAULT_USDA_FOODS`, `normalize_barcode()`, `lookup_barcode()`, `register_barcode()`, and `export_offline_catalog()`.

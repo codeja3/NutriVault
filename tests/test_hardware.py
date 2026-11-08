@@ -230,3 +230,48 @@ def test_format_vlm_setup_guide():
         requested_tier=HardwareTier.TIER_3_HIGH,
         max_allowed_tier=HardwareTier.TIER_3_HIGH,
     )
+
+
+def test_predefined_vlm_catalog():
+    """Verify PREDEFINED_VLM_CATALOG, get_default_vlm_spec, and build_managed_vlm_command."""
+    from src.hardware import (
+        PREDEFINED_VLM_CATALOG,
+        PredefinedVLMModel,
+        build_managed_vlm_command,
+        get_default_vlm_spec,
+    )
+
+    for tier in (HardwareTier.TIER_1_CPU, HardwareTier.TIER_2_MID, HardwareTier.TIER_3_HIGH):
+        spec = get_default_vlm_spec(tier)
+        assert isinstance(spec, PredefinedVLMModel)
+        assert spec.tier == tier
+        assert spec.hf_repo.startswith("ggml-org/")
+        assert spec.model_file.endswith(".gguf")
+        assert spec.mmproj_file.endswith(".gguf")
+        assert spec.approx_size_mb > 0
+        assert spec.sha256_model
+        assert spec.sha256_mmproj
+
+    # Exact tier model checks
+    t1 = PREDEFINED_VLM_CATALOG[HardwareTier.TIER_1_CPU]
+    assert t1.name == "SmolVLM-500M-Instruct-Q8_0"
+    assert t1.approx_size_mb == 550
+
+    t2 = PREDEFINED_VLM_CATALOG[HardwareTier.TIER_2_MID]
+    assert t2.name == "Qwen2.5-VL-3B-Instruct-Q4_K_M"
+    assert t2.approx_size_mb == 2200
+
+    t3 = PREDEFINED_VLM_CATALOG[HardwareTier.TIER_3_HIGH]
+    assert t3.name == "Qwen2.5-VL-7B-Instruct-Q4_K_M"
+    assert t3.approx_size_mb == 5000
+
+    cmd = build_managed_vlm_command(HardwareTier.TIER_1_CPU, port=8081, host="127.0.0.1")
+    assert any("llama-server" in token for token in cmd)
+    assert "--hf-repo" in cmd
+    assert t1.hf_repo in cmd
+    assert "--hf-file" in cmd
+    assert t1.model_file in cmd
+    assert "--port" in cmd
+    assert "8081" in cmd
+    assert "--host" in cmd
+    assert "127.0.0.1" in cmd

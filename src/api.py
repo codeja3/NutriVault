@@ -571,9 +571,9 @@ class NutriVaultHTTPHandler(http.server.BaseHTTPRequestHandler):
                 raw_body[:] = b"\x00" * len(raw_body)
 
         clean_path = self.path.split("?")[0]
-        if clean_path == "/":
+        if method == "GET" and status_code == 200 and clean_path == "/":
             response_content_type = "text/html; charset=utf-8"
-        elif clean_path == "/manifest.json":
+        elif method == "GET" and status_code == 200 and clean_path == "/manifest.json":
             response_content_type = "application/manifest+json"
         else:
             response_content_type = "application/json"

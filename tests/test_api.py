@@ -911,3 +911,67 @@ def test_cli_vlm_guide_flag(capsys):
     assert "NutriVault Local VLM Setup Guide" in captured.out
     assert "llama-server" in captured.out
     assert "--port 8081" in captured.out
+
+
+def test_pwa_js_schema_alignment_and_xss_safety(api_instance):
+    """PWA JS in GET / must match backend response keys and avoid unsafe inline JSON onclick."""
+    status, html = api_instance.handle_request("GET", "/")
+    assert status == 200
+
+    # 1. commitBatchMeal uses data.meal_log_ids, not data.meal_logs
+    assert "data.meal_log_ids" in html
+    assert "data.meal_logs." not in html
+
+    # 2. loadAnalytics uses top-level calories_ema, protein_g_ema, etc., not data.rolling_ema
+    assert "data.calories_ema" in html
+    assert "data.protein_g_ema" in html
+    assert "data.carbs_g_ema" in html
+    assert "data.fat_g_ema" in html
+    assert "data.fiber_g_ema" in html
+    assert "data.rolling_ema" not in html
+
+    # 3. parseMealPhoto uses data.items, not data.candidates / c.resolved_food
+    assert "data.items" in html
+    assert "data.candidates" not in html
+    assert "resolved_food" not in html
+
+    # 4. Athletic AI target tracking uses state.isAiGeneratedDraft
+    assert "isAiGeneratedDraft" in html
+    assert "is_ai_generated: isAthletic && ack" not in html
+
+    # 5. Search result addition uses index lookup and HTML escaping instead of inline JSON.stringify
+    assert "addSearchItemByIndex(" in html
+    assert "escapeHtml(" in html
+    assert "addSearchItemToDraft(${JSON.stringify" not in html
+
+    # 6. updateDraftGrams scales micronutrients (ing.micros)
+    assert "ing.micros" in html
+
+
+def test_http_handler_non_200_on_root_returns_json_content_type(api_instance):
+    """POST / returns 404 JSON error and must have Content-Type: application/json, not text/html."""
+    import io
+    from unittest.mock import Mock
+
+    from src.api import NutriVaultHTTPHandler
+
+    handler = NutriVaultHTTPHandler.__new__(NutriVaultHTTPHandler)
+    handler.api = api_instance
+
+    recorded_headers = {}
+
+    def mock_send_header(name, val):
+        recorded_headers[name] = val
+
+    handler.send_response = Mock()
+    handler.send_header = Mock(side_effect=mock_send_header)
+    handler.end_headers = Mock()
+    handler.headers = {"Content-Length": "0"}
+    handler.rfile = io.BytesIO()
+    handler.wfile = io.BytesIO()
+    handler.request_version = "HTTP/1.1"
+    handler.path = "/"
+
+    handler.do_POST()
+    handler.send_response.assert_called_once_with(404)
+    assert recorded_headers.get("Content-Type") == "application/json"

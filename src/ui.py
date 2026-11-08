@@ -462,9 +462,21 @@ def GET_PWA_HTML() -> str:
       hardware: null,
       profiles: [],
       activeProfile: null,
+      isAiGeneratedDraft: false,
+      searchResults: [],
       draftIngredients: [],
       profileAllocations: {}
     };
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
 
     // Initialization
     window.addEventListener('DOMContentLoaded', async () => {
@@ -534,7 +546,8 @@ def GET_PWA_HTML() -> str:
     function renderProfileSelect() {
       const select = document.getElementById('profile-select');
       select.innerHTML = state.profiles.map(p =>
-        `<option value="${p.id}">${p.name} (${p.profile_type})</option>`
+        `<option value="${escapeHtml(p.id)}">` +
+        `${escapeHtml(p.name)} (${escapeHtml(p.profile_type)})</option>`
       ).join('');
       renderBatchSliders();
     }
@@ -546,6 +559,7 @@ def GET_PWA_HTML() -> str:
 
     async function selectProfile(id) {
       state.activeProfile = state.profiles.find(p => p.id === id);
+      state.isAiGeneratedDraft = false;
       if (!state.activeProfile) return;
 
       const meta = document.getElementById('profile-meta');
@@ -639,6 +653,8 @@ def GET_PWA_HTML() -> str:
         document.getElementById('target-carbs').value = data.carbs_g_target;
         document.getElementById('target-fat').value = data.fat_g_target;
         document.getElementById('target-fiber').value = data.fiber_g_target;
+        state.isAiGeneratedDraft = true;
+        document.getElementById('athletic-ack-checkbox').checked = false;
         document.getElementById('athletic-advisory').style.display = 'block';
         alert('Heuristic targets applied. Please review and acknowledge the advisory.');
       } catch (e) {
@@ -657,7 +673,7 @@ def GET_PWA_HTML() -> str:
         carbs_g_target: parseFloat(document.getElementById('target-carbs').value) || 200,
         fat_g_target: parseFloat(document.getElementById('target-fat').value) || 60,
         fiber_g_target: parseFloat(document.getElementById('target-fiber').value) || 30,
-        is_ai_generated: isAthletic && ack,
+        is_ai_generated: Boolean(state.isAiGeneratedDraft),
         acknowledged: isAthletic ? ack : false
       };
 
@@ -669,6 +685,7 @@ def GET_PWA_HTML() -> str:
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to save targets');
+        state.isAiGeneratedDraft = false;
         alert('Target envelope saved!');
         await loadAnalytics(state.activeProfile.id);
       } catch (e) {
@@ -693,30 +710,38 @@ def GET_PWA_HTML() -> str:
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
 
-        if (!data.results || data.results.length === 0) {
+        state.searchResults = data.results || [];
+        if (state.searchResults.length === 0) {
           container.innerHTML =
             '<div style="padding:8px; font-size:0.8rem; color:var(--text-muted);">' +
             'No matching USDA foods found.</div>';
           return;
         }
 
-        container.innerHTML = data.results.map(r => `
+        container.innerHTML = state.searchResults.map((r, idx) => `
           <div class="search-item">
             <div>
-              <div style="font-weight:600; font-size:0.85rem;">${r.description}</div>
+              <div style="font-weight:600; font-size:0.85rem;">${escapeHtml(r.description)}</div>
               <div style="font-size:0.75rem; color:var(--text-muted);">
                 ${r.nutrients.grams}g &bull; ${r.nutrients.calories} kcal &bull;
                 P: ${r.nutrients.protein_g}g C: ${r.nutrients.carbs_g}g F: ${r.nutrients.fat_g}g
               </div>
             </div>
             <button class="secondary" style="font-size:0.75rem; padding:4px 8px;"
-                    onclick='addSearchItemToDraft(${JSON.stringify(r)})'>+ Add</button>
+                    onclick="addSearchItemByIndex(${idx})">+ Add</button>
           </div>
         `).join('');
       } catch (e) {
         container.innerHTML =
-          `<div style="padding:8px; font-size:0.8rem; color:var(--danger);">${e.message}</div>`;
+          `<div style="padding:8px; font-size:0.8rem; color:var(--danger);">` +
+          `${escapeHtml(e.message)}</div>`;
       }
+    }
+
+    function addSearchItemByIndex(idx) {
+      const item = state.searchResults[idx];
+      if (!item) return;
+      addSearchItemToDraft(item);
     }
 
     function addSearchItemToDraft(item) {
@@ -729,7 +754,7 @@ def GET_PWA_HTML() -> str:
         carbs_g: item.nutrients.carbs_g,
         fat_g: item.nutrients.fat_g,
         fiber_g: item.nutrients.fiber_g,
-        micros: item.nutrients.micronutrients || {}
+        micros: { ...(item.nutrients.micronutrients || {}) }
       });
       renderDraftTable();
     }
@@ -763,25 +788,28 @@ def GET_PWA_HTML() -> str:
           throw new Error(data.error);
         }
 
+        const items = data.items || [];
         status.innerHTML =
-          `<span style="color:var(--primary);">Extracted ${data.candidates.length} items & ` +
+          `<span style="color:var(--primary);">Extracted ${items.length} items & ` +
           'deterministically grounded to USDA. Buffer purged.</span>';
-        for (const c of data.candidates) {
+        for (const c of items) {
+          const nut = c.nutrients || {};
           state.draftIngredients.push({
-            item_name: c.resolved_food.matched_description,
-            fdc_id: c.resolved_food.matched_fdc_id,
-            grams: c.resolved_food.nutrients.grams,
-            calories: c.resolved_food.nutrients.calories,
-            protein_g: c.resolved_food.nutrients.protein_g,
-            carbs_g: c.resolved_food.nutrients.carbs_g,
-            fat_g: c.resolved_food.nutrients.fat_g,
-            fiber_g: c.resolved_food.nutrients.fiber_g,
-            micros: c.resolved_food.nutrients.micronutrients || {}
+            item_name: c.matched_description || c.item_name,
+            fdc_id: c.matched_fdc_id !== null && c.matched_fdc_id !== undefined
+              ? c.matched_fdc_id : 0,
+            grams: nut.grams || 0,
+            calories: nut.calories || 0,
+            protein_g: nut.protein_g || 0,
+            carbs_g: nut.carbs_g || 0,
+            fat_g: nut.fat_g || 0,
+            fiber_g: nut.fiber_g || 0,
+            micros: { ...(nut.micronutrients || {}) }
           });
         }
         renderDraftTable();
       } catch (e) {
-        status.innerHTML = `<span style="color:var(--danger);">${e.message}</span>`;
+        status.innerHTML = `<span style="color:var(--danger);">${escapeHtml(e.message)}</span>`;
       } finally {
         fileInput.value = '';
       }
@@ -806,7 +834,7 @@ def GET_PWA_HTML() -> str:
         totalF += ing.fat_g;
         return `
           <tr>
-            <td>${ing.item_name}</td>
+            <td>${escapeHtml(ing.item_name)}</td>
             <td>
               <input type="number" value="${ing.grams}" style="width:70px; padding:2px 4px;"
                      onchange="updateDraftGrams(${idx}, this.value)">
@@ -832,13 +860,21 @@ def GET_PWA_HTML() -> str:
       const g = parseFloat(newGrams);
       if (isNaN(g) || g <= 0) return;
       const ing = state.draftIngredients[idx];
+      if (!ing || ing.grams <= 0) return;
       const factor = g / ing.grams;
-      ing.grams = g;
+      ing.grams = Math.round(g * 100) / 100;
       ing.calories = Math.round(ing.calories * factor * 100) / 100;
       ing.protein_g = Math.round(ing.protein_g * factor * 100) / 100;
       ing.carbs_g = Math.round(ing.carbs_g * factor * 100) / 100;
       ing.fat_g = Math.round(ing.fat_g * factor * 100) / 100;
       ing.fiber_g = Math.round(ing.fiber_g * factor * 100) / 100;
+      if (ing.micros) {
+        const scaledMicros = {};
+        for (const [k, v] of Object.entries(ing.micros)) {
+          scaledMicros[k] = Math.round(v * factor * 1000) / 1000;
+        }
+        ing.micros = scaledMicros;
+      }
       renderDraftTable();
     }
 
@@ -860,12 +896,13 @@ def GET_PWA_HTML() -> str:
       container.innerHTML = state.profiles.map(p => {
         const val = (state.profiles.length === 1) ? 100 : Math.floor(100 / state.profiles.length);
         state.profileAllocations[p.id] = val;
+        const safeId = escapeHtml(p.id);
         return `
           <div class="slider-row">
-            <label>${p.name}:</label>
+            <label>${escapeHtml(p.name)}:</label>
             <input type="range" min="0" max="100" step="5" value="${val}"
-                   id="slider-${p.id}" oninput="onSliderInput('${p.id}', this.value)">
-            <span id="slider-val-${p.id}">${val}%</span>
+                   id="slider-${safeId}" oninput="onSliderInput('${safeId}', this.value)">
+            <span id="slider-val-${safeId}">${val}%</span>
           </div>
         `;
       }).join('');
@@ -932,15 +969,17 @@ def GET_PWA_HTML() -> str:
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
 
+        const logCount = (data.meal_log_ids || []).length;
         commitStatus.innerHTML =
           `<span style="color:var(--primary); font-weight:600;">` +
-          `Committed dish "${data.dish_name}" across ${data.meal_logs.length} ` +
+          `Committed dish "${escapeHtml(dishName)}" across ${logCount} ` +
           `profile journal(s)!</span>`;
         state.draftIngredients = [];
         renderDraftTable();
         if (state.activeProfile) await loadAnalytics(state.activeProfile.id);
       } catch (e) {
-        commitStatus.innerHTML = `<span style="color:var(--danger);">${e.message}</span>`;
+        commitStatus.innerHTML =
+          `<span style="color:var(--danger);">${escapeHtml(e.message)}</span>`;
       }
     }
 
@@ -951,19 +990,23 @@ def GET_PWA_HTML() -> str:
         const data = await res.json();
         if (!res.ok) return;
 
-        const ema = data.rolling_ema || {};
         const deltas = data.target_deltas || {};
 
         document.getElementById('stat-cals').innerText =
-          ema.calories ? ema.calories.toFixed(0) : '-';
+          data.calories_ema !== undefined && data.calories_ema !== null
+            ? data.calories_ema.toFixed(0) : '-';
         document.getElementById('stat-protein').innerText =
-          ema.protein_g ? ema.protein_g.toFixed(1) : '-';
+          data.protein_g_ema !== undefined && data.protein_g_ema !== null
+            ? data.protein_g_ema.toFixed(1) : '-';
         document.getElementById('stat-carbs').innerText =
-          ema.carbs_g ? ema.carbs_g.toFixed(1) : '-';
+          data.carbs_g_ema !== undefined && data.carbs_g_ema !== null
+            ? data.carbs_g_ema.toFixed(1) : '-';
         document.getElementById('stat-fat').innerText =
-          ema.fat_g ? ema.fat_g.toFixed(1) : '-';
+          data.fat_g_ema !== undefined && data.fat_g_ema !== null
+            ? data.fat_g_ema.toFixed(1) : '-';
         document.getElementById('stat-fiber').innerText =
-          ema.fiber_g ? ema.fiber_g.toFixed(1) : '-';
+          data.fiber_g_ema !== undefined && data.fiber_g_ema !== null
+            ? data.fiber_g_ema.toFixed(1) : '-';
 
         formatDelta('delta-cals', deltas.calories, ' kcal');
         formatDelta('delta-protein', deltas.protein_g, 'g');

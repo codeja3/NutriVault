@@ -789,24 +789,29 @@ def GET_PWA_HTML() -> str:
       }
       if (!state.hardware) return;
       const hw = state.hardware;
-      const primaryModel = (hw.recommended_models && hw.recommended_models[0]) || 'model.gguf';
-      const mmprojModel = primaryModel.replace('.gguf', '-mmproj-f16.gguf');
+      const defVlm = hw.default_vlm || {};
+      const vlmName = defVlm.name || 'SmolVLM-500M-Instruct-Q8_0';
+      const vlmRepo = defVlm.hf_repo || 'ggml-org/SmolVLM-500M-Instruct-GGUF';
+      const vlmSize = defVlm.approx_size_mb || 550;
+      const managedCmd = hw.managed_vlm_command ||
+        `./llama-server --hf-repo ${vlmRepo} --port 8081 --host 127.0.0.1`;
       drawer.innerText = [
         '===========================================================',
         '               NutriVault Local VLM Setup Guide            ',
         '===========================================================',
-        `Host OS:             ${hw.os_name}`,
-        `Total System RAM:    ${hw.total_ram_gb} GB`,
-        `Accelerator Backend: ${hw.accelerator.toUpperCase()}`,
-        `Active Model Tier:   ${hw.active_tier_ceiling}`,
+        `Host OS:                ${hw.os_name}`,
+        `Total System RAM:       ${hw.total_ram_gb} GB`,
+        `Accelerator Backend:    ${hw.accelerator.toUpperCase()}`,
+        `Active Model Tier:      ${hw.active_tier_ceiling}`,
         '-----------------------------------------------------------',
-        'Recommended Models for This Tier:',
+        `Predefined Default VLM: ${vlmName} (~${vlmSize} MB)`,
+        `HuggingFace Repository: ${vlmRepo}`,
+        '-----------------------------------------------------------',
+        'One-Command Automatic Launch (zero manual file hunting):',
+        `  ${managedCmd}`,
+        '-----------------------------------------------------------',
+        'Alternative Models for This Tier:',
         ...(hw.recommended_models || []).map(m => `  • ${m}`),
-        '-----------------------------------------------------------',
-        'Command to launch llama-server on loopback port 8081:',
-        `./llama-server -m ./models/${primaryModel} \\\\`,
-        `  --mmproj ./models/${mmprojModel} \\\\`,
-        '  --port 8081 --host 127.0.0.1',
         '==========================================================='
       ].join('\\n');
       drawer.style.display = 'block';
@@ -977,7 +982,55 @@ def GET_PWA_HTML() -> str:
       }
     }
 
-    // USDA Food Search
+    // USDA Food Search (Online + Offline IndexedDB Fallback)
+    async function searchLocalFoods(q, grams) {
+      try {
+        const db = await openOfflineDB();
+        const items = await new Promise((resolve) => {
+          const tx = db.transaction('offline_foods_cache', 'readonly');
+          const req = tx.objectStore('offline_foods_cache').getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => resolve([]);
+        });
+        const tokens = q.toLowerCase().split(/\\s+/).filter(Boolean);
+        const factor = grams / 100.0;
+        const matched = [];
+        for (const it of items) {
+          const descLower = (it.description || '').toLowerCase();
+          let hits = 0;
+          for (const t of tokens) {
+            if (descLower.includes(t)) hits += 1;
+          }
+          if (hits > 0) {
+            const scaledMicros = {};
+            for (const [k, v] of Object.entries(it.micros_per_100g || {})) {
+              scaledMicros[k] = Math.round(v * factor * 1000) / 1000;
+            }
+            matched.push({
+              fdc_id: it.fdc_id,
+              description: it.description,
+              food_category: it.food_category,
+              preparation_state: it.preparation_state,
+              confidence_score: hits / tokens.length,
+              nutrients: {
+                grams: grams,
+                calories: Math.round(it.calories_per_100g * factor * 100) / 100,
+                protein_g: Math.round(it.protein_g_per_100g * factor * 100) / 100,
+                carbs_g: Math.round(it.carbs_g_per_100g * factor * 100) / 100,
+                fat_g: Math.round(it.fat_g_per_100g * factor * 100) / 100,
+                fiber_g: Math.round(it.fiber_g_per_100g * factor * 100) / 100,
+                micronutrients: scaledMicros
+              }
+            });
+          }
+        }
+        matched.sort((a, b) => b.confidence_score - a.confidence_score);
+        return matched.slice(0, 6);
+      } catch (e) {
+        return [];
+      }
+    }
+
     async function searchFood() {
       const q = document.getElementById('food-search-input').value.trim();
       const grams = parseFloat(document.getElementById('food-search-grams').value) || 100;
@@ -989,12 +1042,20 @@ def GET_PWA_HTML() -> str:
         'Searching USDA...</div>';
 
       try {
-        const url = `/api/v1/foods/search?q=${encodeURIComponent(q)}&grams=${grams}&limit=6`;
-        const res = await fetch(url);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
+        if (!navigator.onLine) {
+          state.searchResults = await searchLocalFoods(q, grams);
+        } else {
+          try {
+            const url = `/api/v1/foods/search?q=${encodeURIComponent(q)}&grams=${grams}&limit=6`;
+            const res = await fetch(url);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            state.searchResults = data.results || [];
+          } catch (netErr) {
+            state.searchResults = await searchLocalFoods(q, grams);
+          }
+        }
 
-        state.searchResults = data.results || [];
         if (state.searchResults.length === 0) {
           container.innerHTML =
             '<div style="padding:8px; font-size:0.8rem; color:var(--text-muted);">' +
@@ -1050,6 +1111,29 @@ def GET_PWA_HTML() -> str:
       }
       const file = fileInput.files[0];
       const status = document.getElementById('vlm-status');
+
+      if (!navigator.onLine) {
+        if (!state.activeProfile) return alert('Select active profile first.');
+        const mealType = document.getElementById('meal-type-select').value || 'dinner';
+        const dishName = document.getElementById('draft-dish-name').value.trim() || 'Offline Photo';
+        await queueOfflineItem({
+          type: 'photo',
+          blob: file,
+          dish_name: dishName,
+          allocations: [{
+            profile_id: state.activeProfile.id,
+            fraction: 1.0,
+            meal_type: mealType,
+            logged_at: new Date().toISOString()
+          }]
+        });
+        status.innerHTML =
+          '<span style="color:var(--warning); font-weight:600;">' +
+          'Queued meal photo for Snap & Sync Later (preserves restaurant timestamp)!</span>';
+        fileInput.value = '';
+        return;
+      }
+
       status.innerText = 'Extracting ingredients via local VLM in volatile memory...';
 
       const formData = new FormData();
@@ -1287,6 +1371,19 @@ def GET_PWA_HTML() -> str:
     }
 
     // Offline Batch Syncing
+    async function requeueUnresolvedBarcodes(unresolvedList) {
+      if (!unresolvedList || unresolvedList.length === 0) return;
+      for (const u of unresolvedList) {
+        await queueOfflineItem({
+          type: 'barcode',
+          barcode: u.barcode,
+          grams: u.grams,
+          dish_name: `Scanned Product (${u.barcode})`,
+          allocations: u.allocations
+        });
+      }
+    }
+
     async function syncOfflineQueue() {
       const btn = document.getElementById('sync-queue-btn');
       btn.innerText = 'Syncing...';
@@ -1305,6 +1402,7 @@ def GET_PWA_HTML() -> str:
 
           const queuedMeals = [];
           const queuedBarcodes = [];
+          const failedPhotos = [];
           for (const it of items) {
             if (it.type === 'meal') {
               queuedMeals.push({
@@ -1319,23 +1417,63 @@ def GET_PWA_HTML() -> str:
                 dish_name: it.dish_name,
                 allocations: it.allocations
               });
+            } else if (it.type === 'photo' && it.blob) {
+              try {
+                const fd = new FormData();
+                fd.append('image', it.blob);
+                const pRes = await fetch('/api/v1/meals/parse-image', { method: 'POST', body: fd });
+                const pData = await pRes.json();
+                if (pRes.ok && pData.items && pData.items.length > 0) {
+                  const ings = pData.items.map(c => {
+                    const nut = c.nutrients || {};
+                    return {
+                      item_name: c.matched_description || c.item_name,
+                      fdc_id: c.matched_fdc_id !== null && c.matched_fdc_id !== undefined
+                        ? c.matched_fdc_id : 0,
+                      grams: nut.grams || 0,
+                      calories: nut.calories || 0,
+                      protein_g: nut.protein_g || 0,
+                      carbs_g: nut.carbs_g || 0,
+                      fat_g: nut.fat_g || 0,
+                      fiber_g: nut.fiber_g || 0,
+                      micros: { ...(nut.micronutrients || {}) }
+                    };
+                  });
+                  queuedMeals.push({
+                    dish_name: it.dish_name || 'Synced Photo Meal',
+                    ingredients: ings,
+                    allocations: it.allocations
+                  });
+                } else {
+                  failedPhotos.push(it);
+                }
+              } catch (photoErr) {
+                failedPhotos.push(it);
+              }
             }
           }
 
-          const syncRes = await fetch('/api/v1/sync/batch', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-              queued_meals: queuedMeals,
-              queued_barcodes: queuedBarcodes
-            })
-          });
-          const syncData = await syncRes.json();
-          if (!syncRes.ok) throw new Error(syncData.error || 'Sync failed.');
+          let syncData = { synced_meals_count: 0, unresolved_barcodes: [] };
+          if (queuedMeals.length > 0 || queuedBarcodes.length > 0) {
+            const syncRes = await fetch('/api/v1/sync/batch', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                queued_meals: queuedMeals,
+                queued_barcodes: queuedBarcodes
+              })
+            });
+            syncData = await syncRes.json();
+            if (!syncRes.ok) throw new Error(syncData.error || 'Sync failed.');
+          }
 
           const clearTx = db.transaction('offline_sync_queue', 'readwrite');
           clearTx.objectStore('offline_sync_queue').clear();
-          clearTx.oncomplete = () => {
+          clearTx.oncomplete = async () => {
+            await requeueUnresolvedBarcodes(syncData.unresolved_barcodes);
+            for (const fp of failedPhotos) {
+              await queueOfflineItem(fp);
+            }
             updateOfflineQueueBadge();
             btn.innerText = 'Sync Now 🔄';
             alert(`Synced ${syncData.synced_meals_count} meals successfully!`);

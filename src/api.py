@@ -136,7 +136,15 @@ class BarcodeRegisterRequest(BaseModel):
     fiber_g_per_100g: float = Field(default=0.0, ge=0.0)
     micros_per_100g: dict[str, float] = Field(default_factory=dict)
     food_category: str = "Packaged Foods"
-    preparation_state: str = "prepared"
+    preparation_state: Literal["cooked", "raw", "prepared", "unknown"] = "prepared"
+
+    @field_validator("micros_per_100g")
+    @classmethod
+    def validate_non_negative_micros(cls, v: dict[str, float]) -> dict[str, float]:
+        for k, val in v.items():
+            if val < 0.0:
+                raise ValueError(f"Micronutrient '{k}' must be >= 0.0, got {val}")
+        return v
 
 
 class QueuedBarcodeItemRequest(BaseModel):

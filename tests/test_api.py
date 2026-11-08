@@ -1237,3 +1237,49 @@ def test_pwa_offline_and_barcode_scanner_ui(api_instance):
     assert "/api/v1/foods/barcode/" in html
     assert "http://" not in html
     assert "https://" not in html
+
+
+def test_barcode_register_validation_preparation_state_and_negative_micros(api_instance):
+    """PUT /api/v1/foods/barcode/{code} rejects invalid preparation_state and negative micros."""
+    base_payload = {
+        "description": "Greek Yogurt",
+        "calories_per_100g": 59.0,
+        "protein_g_per_100g": 10.0,
+        "carbs_g_per_100g": 3.6,
+        "fat_g_per_100g": 0.4,
+        "fiber_g_per_100g": 0.0,
+    }
+
+    # 1. Invalid preparation_state
+    bad_state = dict(base_payload, preparation_state="deep_fried_invalid")
+    status1, _ = api_instance.handle_request(
+        "PUT", "/api/v1/foods/barcode/078742351896", body=json.dumps(bad_state)
+    )
+    assert status1 == 400
+
+    # 2. Negative micronutrient value
+    bad_micros = dict(base_payload, micros_per_100g={"calcium_mg": -5.0})
+    status2, _ = api_instance.handle_request(
+        "PUT", "/api/v1/foods/barcode/078742351896", body=json.dumps(bad_micros)
+    )
+    assert status2 == 400
+
+
+def test_pwa_phase12_remediations(api_instance):
+    """Verify UI VLM guide, offline search fallback, photo queue, and unresolved re-queue."""
+    status, html = api_instance.handle_request("GET", "/")
+    assert status == 200
+
+    # Finding 1: Unresolved barcodes are re-queued into offline_sync_queue with their allocations
+    assert "requeueUnresolvedBarcodes" in html
+
+    # Finding 2a: Offline food search fallback against IndexedDB offline_foods_cache
+    assert "searchLocalFoods(" in html
+
+    # Finding 2b: Offline meal photo queuing (type: 'photo') & flushing in syncOfflineQueue
+    assert "type: 'photo'" in html
+
+    # Finding 3: toggleVlmGuide uses hw.default_vlm and hw.managed_vlm_command
+    assert "hw.default_vlm" in html
+    assert "hw.managed_vlm_command" in html
+    assert "-mmproj-f16.gguf" not in html

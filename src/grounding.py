@@ -162,42 +162,72 @@ class GroundingEngine:
         if active_schema == "usda":
             cursor.execute("PRAGMA usda.table_info(usda_foods);")
             cols = {row[1] for row in cursor.fetchall()}
-            barcode_col = "barcode," if "barcode" in cols else "NULL AS barcode,"
-            cursor.execute(
-                f"""
-                SELECT fdc_id, description, food_category, preparation_state,
-                       {barcode_col}
-                       calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
-                       fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
-                FROM usda.usda_foods;
-                """
-            )
+            if "barcode" in cols:
+                cursor.execute(
+                    """
+                    SELECT fdc_id, description, food_category, preparation_state,
+                           barcode,
+                           calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
+                           fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
+                    FROM usda.usda_foods;
+                    """
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT fdc_id, description, food_category, preparation_state,
+                           NULL AS barcode,
+                           calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
+                           fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
+                    FROM usda.usda_foods;
+                    """
+                )
         elif active_schema == "usda_reference":
             cursor.execute("PRAGMA usda_reference.table_info(usda_foods);")
             cols = {row[1] for row in cursor.fetchall()}
-            barcode_col = "barcode," if "barcode" in cols else "NULL AS barcode,"
-            cursor.execute(
-                f"""
-                SELECT fdc_id, description, food_category, preparation_state,
-                       {barcode_col}
-                       calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
-                       fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
-                FROM usda_reference.usda_foods;
-                """
-            )
+            if "barcode" in cols:
+                cursor.execute(
+                    """
+                    SELECT fdc_id, description, food_category, preparation_state,
+                           barcode,
+                           calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
+                           fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
+                    FROM usda_reference.usda_foods;
+                    """
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT fdc_id, description, food_category, preparation_state,
+                           NULL AS barcode,
+                           calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
+                           fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
+                    FROM usda_reference.usda_foods;
+                    """
+                )
         else:
             cursor.execute("PRAGMA main.table_info(usda_foods);")
             cols = {row[1] for row in cursor.fetchall()}
-            barcode_col = "barcode," if "barcode" in cols else "NULL AS barcode,"
-            cursor.execute(
-                f"""
-                SELECT fdc_id, description, food_category, preparation_state,
-                       {barcode_col}
-                       calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
-                       fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
-                FROM usda_foods;
-                """
-            )
+            if "barcode" in cols:
+                cursor.execute(
+                    """
+                    SELECT fdc_id, description, food_category, preparation_state,
+                           barcode,
+                           calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
+                           fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
+                    FROM usda_foods;
+                    """
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT fdc_id, description, food_category, preparation_state,
+                           NULL AS barcode,
+                           calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
+                           fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
+                    FROM usda_foods;
+                    """
+                )
         rows = cursor.fetchall()
         cache: list[CachedFoodEntry] = []
         for r in rows:

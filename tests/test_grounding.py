@@ -395,3 +395,24 @@ def test_register_barcode_and_cache_invalidation():
     assert resolved is not None
     assert resolved.nutrients.grams == 200.0
     assert resolved.nutrients.protein_g == 20.0
+
+
+def test_grounding_engine_zero_sql_fstrings():
+    """AGENTS.md §4: Zero f-strings or string formatting allowed inside SQL execute calls."""
+    import ast
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parent.parent.joinpath("src", "grounding.py").read_text()
+    tree = ast.parse(source)
+
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"execute", "executemany", "executescript"}
+            and node.args
+        ):
+            sql_arg = node.args[0]
+            assert not isinstance(sql_arg, ast.JoinedStr), (
+                f"Found forbidden f-string in SQL execute at line {node.lineno}"
+            )

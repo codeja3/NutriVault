@@ -92,17 +92,20 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS profiles (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    profile_type TEXT NOT NULL CHECK (profile_type IN ('standard', 'athletic', 'chronic_condition')),
-    birth_date TEXT,
+    birth_date DATE,
+    profile_type TEXT NOT NULL CHECK (
+        profile_type IN ('standard', 'athletic', 'chronic_condition')
+    ),
     condition_notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Target Nutrition Envelopes
 CREATE TABLE IF NOT EXISTS target_envelopes (
     id TEXT PRIMARY KEY,
     profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    calories_target REAL NOT NULL CHECK (calories_target >= 0.0),
+    calories_target INTEGER NOT NULL CHECK (calories_target >= 0),
     protein_g_target REAL NOT NULL CHECK (protein_g_target >= 0.0),
     carbs_g_target REAL NOT NULL CHECK (carbs_g_target >= 0.0),
     fat_g_target REAL NOT NULL CHECK (fat_g_target >= 0.0),
@@ -143,9 +146,8 @@ CREATE TABLE IF NOT EXISTS meal_logs (
     carbs_g REAL NOT NULL CHECK (carbs_g >= 0.0),
     fat_g REAL NOT NULL CHECK (fat_g >= 0.0),
     fiber_g REAL NOT NULL CHECK (fiber_g >= 0.0),
-    micronutrients_json TEXT NOT NULL DEFAULT '{}',
-    logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    micros_json TEXT NOT NULL DEFAULT '{}',
+    logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- USDA Food & Barcode Catalog
@@ -153,24 +155,28 @@ CREATE TABLE IF NOT EXISTS usda_foods (
     fdc_id INTEGER PRIMARY KEY,
     description TEXT NOT NULL,
     food_category TEXT,
-    preparation_state TEXT DEFAULT 'prepared',
-    barcode TEXT,
-    calories_per_100g REAL NOT NULL,
-    protein_g_per_100g REAL NOT NULL,
-    carbs_g_per_100g REAL NOT NULL,
-    fat_g_per_100g REAL NOT NULL,
-    fiber_g_per_100g REAL NOT NULL,
-    micros_per_100g_json TEXT,
-    created_at TEXT DEFAULT (datetime('now', 'utc'))
+    preparation_state TEXT NOT NULL DEFAULT 'unknown' CHECK (
+        preparation_state IN ('cooked', 'raw', 'prepared', 'unknown')
+    ),
+    calories_per_100g REAL NOT NULL CHECK (calories_per_100g >= 0.0),
+    protein_g_per_100g REAL NOT NULL CHECK (protein_g_per_100g >= 0.0),
+    carbs_g_per_100g REAL NOT NULL CHECK (carbs_g_per_100g >= 0.0),
+    fat_g_per_100g REAL NOT NULL CHECK (fat_g_per_100g >= 0.0),
+    fiber_g_per_100g REAL NOT NULL CHECK (fiber_g_per_100g >= 0.0),
+    micros_per_100g_json TEXT NOT NULL DEFAULT '{}',
+    barcode TEXT
 );
 
+CREATE INDEX IF NOT EXISTS idx_usda_foods_description ON usda_foods (description);
 CREATE INDEX IF NOT EXISTS idx_usda_foods_barcode ON usda_foods (barcode);
 ```
 
 ### Dual-Database Attachment
-To keep personal user logs separate from heavy read-only reference data (e.g., full USDA FoodData Central distributions), NutriVault supports dynamic schema attachment:
+To keep personal user logs separate from heavy read-only reference data (e.g., full USDA FoodData Central distributions), NutriVault supports parameterized schema attachment via [`attach_usda_reference`](file:///Users/yannis/Projects/NutriVault/src/db.py#L809-L823):
 ```python
-conn.execute("ATTACH DATABASE 'data/usda_reference.db' AS usda_reference;")
+from src.db import attach_usda_reference
+
+attach_usda_reference(conn, "data/usda_reference.db", schema_name="usda_reference")
 ```
 The `GroundingEngine` dynamically probes attached schemas via `PRAGMA database_list` and table schemas via `PRAGMA table_info(usda_foods)`.
 

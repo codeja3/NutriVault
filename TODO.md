@@ -237,5 +237,44 @@
   - [x] `GREEN`: Update `README.md` and `MANUAL.md` with 60-second browser UI quickstart, `docker compose up` instructions, `GET /api/v1/foods/search` documentation, and `--vlm-guide` usage; log Phase 11 in `MEMORY.md`.
   - [x] `REFACTOR`: Run full offline pytest suite and `ruff check` / `ruff format`.
 
+---
+
+## Phase 12: One-Stop-Shop Predefined VLM Catalog, Offline-First "Snap & Sync Later" PWA & 3-Tier Barcode Scanner
+
+- [ ] **Task 12.1: Predefined Tier-Matched VLM Catalog & Zero-Download-Hunt Command Builder**
+  - [ ] `RED`: Author tests in `tests/test_hardware.py` asserting `PredefinedVLMModel`, `PREDEFINED_VLM_CATALOG` (mapping `tier_1_cpu` $\rightarrow$ `SmolVLM-500M-Instruct-Q8_0`, `tier_2_mid` $\rightarrow$ `Qwen2.5-VL-3B-Instruct-Q4_K_M`, `tier_3_high` $\rightarrow$ `Qwen2.5-VL-7B-Instruct-Q4_K_M`), `get_default_vlm_spec(tier)`, and `build_managed_vlm_command(tier)` emitting `llama-server --hf-repo ... --hf-file ...`.
+  - [ ] `GREEN`: Implement `PredefinedVLMModel`, `PREDEFINED_VLM_CATALOG`, `get_default_vlm_spec()`, and `build_managed_vlm_command()` in `src/hardware.py`, and expose `default_vlm` and `managed_vlm_command` in `GET /api/v1/hardware` (`src/api.py`).
+  - [ ] `REFACTOR`: Update `format_vlm_setup_guide()` to include the predefined `--hf-repo` command and approximate download size.
+
+- [ ] **Task 12.2: SQLite `barcode` Schema Migration, Seeded Staple Barcodes & Grounding Barcode Engine**
+  - [ ] `RED`: Author tests in `tests/test_db.py` and `tests/test_grounding.py` asserting idempotent `usda_foods.barcode` column creation/migration, `idx_usda_foods_barcode` index, seeded UPC/EAN barcodes in `DEFAULT_USDA_FOODS`, `normalize_barcode()`, `lookup_barcode()`, `register_barcode()`, and `export_offline_catalog()`.
+  - [ ] `GREEN`: Update `src/db.py` (`usda_foods` DDL, idempotent `ALTER TABLE` check in `init_db`, barcodes in `DEFAULT_USDA_FOODS`) and `src/grounding.py` (`normalize_barcode`, `lookup_barcode`, `register_barcode`, `export_offline_catalog`, and `BarcodeNotFoundError`).
+  - [ ] `REFACTOR`: Ensure `GroundingEngine` cache invalidates cleanly on `register_barcode()` and supports attached `usda`/`usda_reference` schemas.
+
+- [ ] **Task 12.3: Barcode Lookup, Custom Barcode Registration & Offline Batch Sync API Endpoints**
+  - [ ] `RED`: Author offline contract tests in `tests/test_api.py` asserting:
+    - `GET /api/v1/foods/catalog` returns the full local food & barcode catalog for client IndexedDB caching.
+    - `GET /api/v1/foods/barcode/{code}?grams=150` returns scaled nutrients (`200 OK`), `404 ERR_BARCODE_NOT_FOUND` on unknown barcode, and `400` on invalid barcode/grams.
+    - `PUT /api/v1/foods/barcode/{code}` registers/updates a custom barcode in `usda_foods` (`200 OK`) and makes subsequent `GET /api/v1/foods/barcode/{code}` hits succeed immediately.
+    - `POST /api/v1/sync/batch` processes offline-queued meals (`queued_meals`) and deferred offline barcode scans (`queued_barcodes`) preserving original `logged_at` timestamps, while returning any unrecognized barcodes in `unresolved_barcodes` without failing valid items in the batch.
+  - [ ] `GREEN`: Implement Pydantic models (`BarcodeRegisterRequest`, `QueuedBarcodeItemRequest`, `OfflineSyncBatchRequest`) and route handlers (`_handle_get_catalog`, `_handle_get_barcode`, `_handle_put_barcode`, `_handle_sync_batch`) in `src/api.py`.
+  - [ ] `REFACTOR`: Verify thread-safe locking and clean HTTP error mapping across all new routes.
+
+- [ ] **Task 12.4: Offline-First PWA Service Worker (`GET /sw.js`), IndexedDB Queue & In-Browser Camera Barcode Scanner (`src/ui.py`)**
+  - [ ] `RED`: Author tests in `tests/test_api.py` asserting `GET /sw.js` returns `200 OK` with `application/javascript; charset=utf-8` (and zero external URLs), and `GET /` includes the offline IndexedDB queue (`nutrivault_offline_db`), Service Worker registration, "Snap & Sync Later" offline queue controls, and in-browser `BarcodeDetector` scanner + Tier-3 custom barcode registration UI.
+  - [ ] `GREEN`: Implement `GET_PWA_SERVICE_WORKER()` and update `GET_PWA_HTML()` in `src/ui.py`, and wire `GET /sw.js` in `src/api.py`.
+  - [ ] `REFACTOR`: Ensure strict DOM XSS escaping (`escapeHtml`) and zero external CDN references across `src/ui.py`.
+
+- [ ] **Task 12.5: Turnkey One-Stop `docker-compose.yml` with Preconfigured `SmolVLM-500M` Sidecar & Optional P2P Remote Profile**
+  - [ ] `RED`: Author tests in `tests/test_env.py` asserting `docker-compose.yml` defines the `nutrivault-vlm` service preconfigured with `SmolVLM-500M-Instruct-Q8_0` and the optional `remote` profile for away-from-home P2P access.
+  - [ ] `GREEN`: Update `docker-compose.yml` with the preconfigured `nutrivault-vlm` sidecar (`--hf-repo ggml-org/SmolVLM-500M-Instruct-GGUF`) and optional `nutrivault-remote` Tailscale sidecar profile.
+  - [ ] `REFACTOR`: Verify environment variable wiring (`NUTRIVAULT_VLM_URL`) and volume mounts.
+
+- [ ] **Task 12.6: Role-Separated Documentation Overhaul (`README.md`, `MANUAL.md` for Average Users, `DEV_MANUAL.md` for Developers)**
+  - [ ] `RED`: Audit `README.md` and `MANUAL.md` to identify all developer-only instructions (`uv`, `git` cloning/branching, pytest, SQLite DDL, raw `curl` payloads) that belong in `DEV_MANUAL.md`.
+  - [ ] `GREEN`: Create `DEV_MANUAL.md` with complete technical/developer documentation, rewrite `MANUAL.md` as a jargon-free end-user manual (covering 1-click launch, phone PWA installation, offline "Snap & Sync Later" restaurant/travel mode, and 3-tier grocery barcode scanning), and update `README.md` and `MEMORY.md`.
+  - [ ] `REFACTOR`: Run full offline `uv run pytest` and `uv run ruff check .` / `uv run ruff format --check .` to verify 100% green status.
+
+
 
 

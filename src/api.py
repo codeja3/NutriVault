@@ -37,6 +37,7 @@ from src.grounding import (
 from src.hardware import (
     HardwareProfile,
     build_managed_vlm_command,
+    detect_local_lan_ip,
     format_vlm_setup_guide,
     get_default_vlm_spec,
     get_recommended_models,
@@ -408,6 +409,7 @@ class NutriVaultAPI:
             "recommended_models": get_recommended_models(self.active_tier_ceiling),
             "default_vlm": asdict(default_vlm),
             "managed_vlm_command": " ".join(cmd_tokens),
+            "local_lan_url": f"http://{detect_local_lan_ip()}:8080",
         }
         return 200, json.dumps(resp)
 
@@ -793,9 +795,11 @@ def run_server(
     host: str = "0.0.0.0",
     port: int = 8080,
     db_path: str = "data/nutrivault.db",
+    open_browser: bool = False,
 ) -> None:
     """Run NutriVault local REST service daemon."""
     import os
+    import webbrowser
 
     os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
     conn = sqlite3.connect(db_path, check_same_thread=False)
@@ -807,7 +811,11 @@ def run_server(
         api = api_instance
 
     server = http.server.ThreadingHTTPServer((host, port), CustomHandler)
-    print(f"NutriVault service running at http://{host}:{port}")
+    lan_ip = detect_local_lan_ip()
+    print(f"NutriVault service running at http://localhost:{port}")
+    print(f"Phone Wi-Fi Link (same network): http://{lan_ip}:{port}")
+    if open_browser:
+        threading.Timer(0.6, lambda: webbrowser.open(f"http://localhost:{port}")).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -825,13 +833,14 @@ def main(argv: list[str] | None = None) -> None:
     args = sys.argv if argv is None else argv
 
     if "--help" in args:
-        print("Usage: python -m src.api [host] [port] [db_path] | --vlm-guide")
+        print("Usage: python -m src.api [host] [port] [db_path] [--open-browser] | --vlm-guide")
         sys.exit(0)
 
     if "--vlm-guide" in args:
         print(format_vlm_setup_guide())
         sys.exit(0)
 
+    open_browser = "--open-browser" in args
     host_arg = os.environ.get("NUTRIVAULT_HOST", "0.0.0.0")
     port_arg = int(os.environ.get("NUTRIVAULT_PORT", "8080"))
     db_arg = os.environ.get("NUTRIVAULT_DB", "data/nutrivault.db")
@@ -844,7 +853,7 @@ def main(argv: list[str] | None = None) -> None:
     if len(non_flag_args) > 2:
         db_arg = non_flag_args[2]
 
-    run_server(host=host_arg, port=port_arg, db_path=db_arg)
+    run_server(host=host_arg, port=port_arg, db_path=db_arg, open_browser=open_browser)
 
 
 if __name__ == "__main__":

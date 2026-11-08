@@ -3,7 +3,7 @@
 **Project Name:** NutriVault  
 **Subtitle:** Local-First Personal and Family Nutrition Tracker  
 **Status:** Approved & Locked  
-**Version:** 1.3.0  
+**Version:** 1.4.0  
 
 ---
 
@@ -26,7 +26,7 @@ NutriVault is an open-source, local-first "one-stop shop" nutritional tracking a
 * **Strict Privacy & Zero Data Exfiltration:** Zero analytics SDKs, zero telemetry, zero fingerprinting, and zero cloud services in the data path.
 * **Transient Media Lifecycle:** Images processed by the backend are held exclusively in volatile memory buffers (`io.BytesIO`) and overwritten with `0x00` bytes upon completion. Under no circumstances are raw food photos persisted to server disk, swap, or external cloud storage.
 * **Neuro-Symbolic Grounding:** The local vision model functions strictly as an entity and portion extractor, never an arithmetic calculator. Nutritional calculations are deterministically computed using embedded reference tables (USDA FoodData Central & verified local barcode mappings) to prevent model hallucinations.
-* **One-Stop-Shop Onboarding ("Zero Jargon for Average Users"):** The application works out-of-the-box via a single command (`docker compose up`), ships with predefined tier-matched VLM configurations, seeds a starter USDA & barcode catalog automatically, and separates end-user documentation (`MANUAL.md`) from developer internals (`DEV_MANUAL.md`).
+* **One-Stop-Shop Onboarding ("Zero Jargon & Double-Click Launch"):** The application ships with native double-click desktop launchers (`Start_NutriVault.command` for macOS Finder, `Start_NutriVault.bat` for Windows Explorer) that automatically start the server and open the user's web browser (`--open-browser`), displays the host computer's exact home Wi-Fi link (`local_lan_url`) right inside the web app header for effortless phone pairing, seeds a starter USDA & barcode catalog automatically, and separates end-user documentation (`MANUAL.md`) from developer internals (`DEV_MANUAL.md`).
 * **Offline-First Mobility ("Snap & Sync Later" + Optional P2P Live Access):** Users can capture meal photos, scan grocery barcodes, and log meals on their phone while completely offline (at a restaurant, grocery store, or travelling) and automatically synchronize with their host laptop/server upon reconnection—or optionally use a zero-config P2P VPN sidecar (e.g., Tailscale) for live remote VLM inference.
 * **Household Data Sovereignty:** Complete user ownership of all data via standard, unencrypted SQLite files, enabling direct queryability, custom scripting, and local statistical analysis.
 
@@ -109,8 +109,10 @@ NutriVault is an open-source, local-first "one-stop shop" nutritional tracking a
   * System must expose `GET /api/v1/foods/search?q={query}&grams={grams}&limit={limit}` returning ranked items and scaled nutrients.
 * **FR-11: Built-In Zero-Build Progressive Web App (PWA) Interface**
   * System must serve the responsive web application at `GET /`, web manifest at `GET /manifest.json`, and offline Service Worker at `GET /sw.js`.
-* **FR-12: Turnkey One-Stop Docker Compose (Bundled VLM Sidecar & Optional P2P Tunnel)**
-  * System must provide a `docker-compose.yml` that launches the `nutrivault` web server alongside a preconfigured local VLM sidecar (`nutrivault-vlm` serving the predefined `SmolVLM-500M-Instruct-Q8_0` model automatically) and an optional P2P VPN profile (`remote`) for live away-from-home access.
+* **FR-12: Double-Click Desktop Launchers, Automatic Browser Launch & Turnkey Containerization**
+  * System must provide native double-click launcher scripts (`Start_NutriVault.command` for macOS and `Start_NutriVault.bat` for Windows) that require zero terminal usage, automatically bootstrap/run the local server, and open `http://localhost:8080` in the user's default browser (`--open-browser`).
+  * System must automatically detect the host computer's local LAN IP address (`detect_local_lan_ip`) and expose `local_lan_url` (`http://<lan_ip>:8080`) in `GET /api/v1/hardware` and the PWA header (`📱 Phone Wi-Fi Link`) so users never have to search OS network settings to connect their phone.
+  * System must also provide a `docker-compose.yml` that launches `nutrivault` alongside a preconfigured `nutrivault-vlm` (`SmolVLM-500M-Instruct-Q8_0`) sidecar and an optional P2P VPN profile (`remote`).
 * **FR-13: Offline-First "Snap & Sync Later" Queue (Away-from-Laptop Mode)**
   * When the client device is offline or away from the host laptop (e.g., at a restaurant or travelling), the PWA must remain loadable via `GET /sw.js` and allow users to queue meal drafts, photos (with original `logged_at` timestamps), and barcode scans in browser IndexedDB (`offline_sync_queue`).
   * Upon reconnecting to the NutriVault host, the PWA must synchronize queued items via `POST /api/v1/sync/batch` (and `POST /api/v1/meals/parse-image` for queued photos), preserving original consumption timestamps for chrononutrition accuracy.

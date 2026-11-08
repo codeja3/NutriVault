@@ -275,6 +275,26 @@
   - [x] `GREEN`: Create `DEV_MANUAL.md` with complete technical/developer documentation, rewrite `MANUAL.md` as a jargon-free end-user manual (covering 1-click launch, phone PWA installation, offline "Snap & Sync Later" restaurant/travel mode, and 3-tier grocery barcode scanning), and update `README.md` and `MEMORY.md`.
   - [x] `REFACTOR`: Run full offline `uv run pytest` and `uv run ruff check .` / `uv run ruff format --check .` to verify 100% green status.
 
+---
+
+## Phase 13: True Double-Click Desktop Launchers, Auto-Browser Open, Automatic Phone Wi-Fi Link & Zero-Terminal User Manual
+
+- [x] **Task 13.1: Local LAN IP Discovery (`detect_local_lan_ip`), `--open-browser` CLI Flag & Phone Wi-Fi Link UI Badge**
+  - [x] `RED`: Author tests in `tests/test_hardware.py` and `tests/test_api.py` asserting `detect_local_lan_ip()` returns a valid IPv4 string (with `"127.0.0.1"` fallback), `GET /api/v1/hardware` includes `local_lan_url`, `GET /` displays `#phone-wifi-link` populated from `hw.local_lan_url`, and `--open-browser` triggers `webbrowser.open`.
+  - [x] `GREEN`: Implement `detect_local_lan_ip()` in `src/hardware.py`, add `local_lan_url` and `--open-browser` in `src/api.py`, and add the `#phone-wifi-link` badge in `src/ui.py`.
+  - [x] `REFACTOR`: Verify offline hermetic execution with mocked sockets/browser calls.
+
+- [x] **Task 13.2: Native Double-Click Desktop Launchers (`Start_NutriVault.command` for macOS & `Start_NutriVault.bat` for Windows)**
+  - [x] `RED`: Author tests in `tests/test_env.py` asserting `Start_NutriVault.command` (with executable bit `0o755`) and `Start_NutriVault.bat` exist in repository root and invoke NutriVault with automatic working-directory resolution and browser opening.
+  - [x] `GREEN`: Create `Start_NutriVault.command` (`chmod +x`) and `Start_NutriVault.bat` in repository root.
+  - [x] `REFACTOR`: Ensure scripts work whether the user has Docker Desktop or standalone Python/`uv` (and automatically install portable `uv` if missing).
+
+- [x] **Task 13.3: True Zero-Terminal Step-by-Step User Manual (`MANUAL.md` & `README.md` Overhaul)**
+  - [x] `RED`: Audit `MANUAL.md` and `README.md` to ensure zero terminal assumptions for average users, adding the direct 1-click ZIP download URL, step-by-step unzipping instructions, Mac/Windows double-click instructions (including macOS Gatekeeper Right-Click -> Open tip), and how to read the `📱 Phone Wi-Fi Link` badge on screen.
+  - [x] `GREEN`: Rewrite `MANUAL.md` and update `README.md`, `DEV_MANUAL.md`, and `MEMORY.md`.
+  - [x] `REFACTOR`: Run full offline `uv run pytest` and `uv run ruff check .` / `uv run ruff format --check .`.
+
+
 
 
 

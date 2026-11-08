@@ -3,7 +3,7 @@
 **Project Name:** NutriVault  
 **Subtitle:** Local-First Personal and Family Nutrition Tracker  
 **Status:** Approved & Locked  
-**Version:** 1.3.0  
+**Version:** 1.4.0  
 
 ---
 
@@ -77,6 +77,7 @@ class PredefinedVLMModel:
   * `get_recommended_models(tier: HardwareTier) -> list[str]`: Returns the curated list of GGUF model filenames for the given tier.
   * `get_default_vlm_spec(tier: HardwareTier) -> PredefinedVLMModel`: Returns the pinned default `PredefinedVLMModel` for the given tier.
   * `build_managed_vlm_command(tier: HardwareTier, port: int = 8081, host: str = "127.0.0.1") -> list[str]`: Returns the zero-manual-download `llama-server` argv list using `--hf-repo <hf_repo> --hf-file <model_file> --port <port> --host <host>`.
+  * `detect_local_lan_ip() -> str`: Detects the host machine's local area network IPv4 address (falling back cleanly to `"127.0.0.1"` when disconnected) so the web UI can display the exact phone connection URL (`local_lan_url`).
   * `format_vlm_setup_guide(profile: HardwareProfile | None = None) -> str`: Generates a human-readable setup guide showing detected hardware, resolved tier ceiling, the predefined default model spec (`hf_repo`, `approx_size_mb`), and the one-command `llama-server --hf-repo ...` invocation.
 
 ---
@@ -253,7 +254,7 @@ The VLM is strictly forbidden from outputting nutritional math. All calculations
 | `/` | `GET` | `200` | None | `text/html; charset=utf-8` | Serves the built-in offline-capable Progressive Web App (PWA) UI. |
 | `/manifest.json` | `GET` | `200` | None | `application/manifest+json` | Serves the PWA web manifest for home-screen installation. |
 | `/sw.js` | `GET` | `200` | None | `application/javascript; charset=utf-8` | Serves the offline Service Worker caching the app shell and bootstrap state. |
-| `/api/v1/hardware` | `GET` | `200` | None | `HardwareStatusResponse` | Returns compute specs, active tier ceiling, `recommended_models`, `default_vlm`, and `managed_vlm_command`. |
+| `/api/v1/hardware` | `GET` | `200` | None | `HardwareStatusResponse` | Returns compute specs, active tier ceiling, `recommended_models`, `default_vlm`, `managed_vlm_command`, and `local_lan_url`. |
 | `/api/v1/profiles` | `GET` | `200` | None | `Array<Profile>` | Lists all household profiles ordered by `created_at ASC`. |
 | `/api/v1/profiles` | `POST` | `201` | `ProfileCreateRequest` | `Profile` | Creates a household profile. |
 | `/api/v1/profiles/{id}/targets` | `PUT` | `200` | `TargetEnvelopeRequest` | `TargetEnvelope` | Atomically updates active targets; enforces clinical & athletic safeguards. |
@@ -358,13 +359,18 @@ The VLM is strictly forbidden from outputting nutritional math. All calculations
 
 ---
 
-## 9. Turnkey Containerization & Role-Separated Documentation Specification
+## 9. Double-Click Desktop Launchers, Containerization & Role-Separated Documentation Specification
 
-1. **One-Stop `docker-compose.yml` with Preconfigured VLM Sidecar & Optional P2P Tunnel:**
+1. **Double-Click Desktop Launchers (`Start_NutriVault.command` & `Start_NutriVault.bat`) & `--open-browser` CLI Flag:**
+   * `Start_NutriVault.command` (macOS Finder double-clickable executable script) and `Start_NutriVault.bat` (Windows Explorer double-clickable batch script) allow non-technical users to launch NutriVault by double-clicking an icon in their unzipped folder without opening a terminal or typing commands.
+   * Each script automatically switches its working directory to the script's own folder, prefers `docker compose up` if Docker Desktop is running or seamlessly bootstraps/runs `uv run python -m src.api --open-browser`, and automatically opens `http://localhost:8080` in the user's default web browser.
+   * `python -m src.api --open-browser` (and `run_server(..., open_browser: bool = False)`) spawns a short background timer that invokes `webbrowser.open(f"http://localhost:{port}")` once the HTTP server binds.
+   * The web UI header displays `#phone-wifi-link` populated from `GET /api/v1/hardware` (`local_lan_url`, e.g., `http://192.168.1.x:8080`) so the user can copy-paste or type the exact address into their phone browser without searching system network settings.
+2. **One-Stop `docker-compose.yml` with Preconfigured VLM Sidecar & Optional P2P Tunnel:**
    * `nutrivault` service (`8080:8080`, `./data:/app/data`).
    * `nutrivault-vlm` sidecar service (`ghcr.io/ggerganov/llama.cpp:server`) preconfigured to serve the default `SmolVLM-500M-Instruct-Q8_0` (`--hf-repo ggml-org/SmolVLM-500M-Instruct-GGUF --hf-file SmolVLM-500M-Instruct-Q8_0.gguf --port 8081 --host 0.0.0.0`) with cached `./models:/root/.cache/llama.cpp` volume persistence so camera AI works out-of-the-box on `docker compose up`.
    * Optional `nutrivault-remote` (`tailscale/tailscale`) service under `--profile remote` for live encrypted P2P access away from home.
-2. **Role-Separated Documentation (`README.md`, `MANUAL.md`, `DEV_MANUAL.md`):**
-   * `README.md`: High-level overview, 60-second Docker Compose quickstart, offline "Snap & Sync Later" and barcode overview, and links to `MANUAL.md` (for users) and `DEV_MANUAL.md` (for developers).
-   * `MANUAL.md`: Strictly end-user focused. Zero mention of `uv`, `git` branching, pytest, SQL DDL, or manual `.gguf` hunting. Covers launching the app, installing the PWA on a phone, logging meals at home, using "Snap & Sync Later" at restaurants/while travelling, and scanning grocery barcodes offline/online.
+3. **Role-Separated Documentation (`README.md`, `MANUAL.md`, `DEV_MANUAL.md`):**
+   * `README.md`: High-level overview, 1-click download & double-click quickstart, offline "Snap & Sync Later" and barcode overview, and links to `MANUAL.md` (for users) and `DEV_MANUAL.md` (for developers).
+   * `MANUAL.md`: Strictly end-user focused. Zero terminal requirements, zero `uv`/`git` jargon. Walks a complete beginner through: (1) Clicking the direct ZIP download link and unzipping it in `Downloads`, (2) Double-clicking `Start_NutriVault.command` (Mac) or `Start_NutriVault.bat` (Windows) so the browser opens automatically, (3) Reading the **`Phone Wi-Fi Link`** badge at the top of the NutriVault screen to install the phone app ("Add to Home Screen"), and (4) Using instant search, meal photos, family batch splitting, 3-tier grocery barcode scanning, and "Snap & Sync Later" travel mode.
    * `DEV_MANUAL.md`: Dedicated developer handbook covering `uv` toolchain setup, `git` workflow, TDD (`Red -> Green -> Refactor`), module architecture (`src/`), SQLite schemas & dual-DB attachment, neuro-symbolic grounding math, `0x00` volatile memory guarantees, `curl` REST API reference, and custom `llama-server` debugging.

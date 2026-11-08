@@ -275,3 +275,18 @@ def test_predefined_vlm_catalog():
     assert "8081" in cmd
     assert "--host" in cmd
     assert "127.0.0.1" in cmd
+
+
+def test_detect_local_lan_ip(mocker):
+    """detect_local_lan_ip returns LAN IPv4 address or falls back cleanly to 127.0.0.1."""
+    from src.hardware import detect_local_lan_ip
+
+    mock_sock = mocker.MagicMock()
+    mock_sock.__enter__.return_value.getsockname.return_value = ("192.168.1.42", 54321)
+    mocker.patch("socket.socket", return_value=mock_sock)
+
+    assert detect_local_lan_ip() == "192.168.1.42"
+
+    # Fallback when socket raises OSError
+    mocker.patch("socket.socket", side_effect=OSError("Network unreachable"))
+    assert detect_local_lan_ip() == "127.0.0.1"

@@ -1283,3 +1283,24 @@ def test_pwa_phase12_remediations(api_instance):
     assert "hw.default_vlm" in html
     assert "hw.managed_vlm_command" in html
     assert "-mmproj-f16.gguf" not in html
+
+
+def test_hardware_endpoint_and_ui_expose_local_lan_url(api_instance, mocker):
+    """GET /api/v1/hardware exposes local_lan_url, UI shows phone-wifi-link, CLI opens browser."""
+    from src.api import main
+
+    mocker.patch("src.api.detect_local_lan_ip", return_value="192.168.1.42")
+    status, body = api_instance.handle_request("GET", "/api/v1/hardware")
+    assert status == 200
+    data = json.loads(body)
+    assert data["local_lan_url"] == "http://192.168.1.42:8080"
+
+    status_ui, html = api_instance.handle_request("GET", "/")
+    assert status_ui == 200
+    assert 'id="phone-wifi-link"' in html
+    assert "hw.local_lan_url" in html
+
+    mock_run = mocker.patch("src.api.run_server")
+    main(["src.api", "--open-browser"])
+    mock_run.assert_called_once()
+    assert mock_run.call_args.kwargs.get("open_browser") is True

@@ -3,6 +3,7 @@
 import os
 import platform
 import shutil
+import socket
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
@@ -263,6 +264,19 @@ def build_managed_vlm_command(
 def get_recommended_models(tier: HardwareTier) -> list[str]:
     """Return curated list of GGUF model filenames for given tier."""
     return TIER_RECOMMENDED_MODELS.get(tier, TIER_RECOMMENDED_MODELS[HardwareTier.TIER_1_CPU])
+
+
+def detect_local_lan_ip() -> str:
+    """Detect the host machine's local area network IPv4 address without sending packets."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("10.255.255.255", 1))
+            ip = str(s.getsockname()[0])
+            if ip:
+                return ip
+    except Exception:
+        pass
+    return "127.0.0.1"
 
 
 def format_vlm_setup_guide(profile: HardwareProfile | None = None) -> str:

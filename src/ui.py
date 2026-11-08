@@ -292,7 +292,12 @@ def GET_PWA_HTML() -> str:
       <h1>🥗 NutriVault</h1>
       <p>Local-First Personal & Family Nutrition Tracker (Zero Cloud Telemetry)</p>
     </div>
-    <div style="display:flex; align-items:center; gap:8px;">
+    <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
+      <div class="hw-badge" id="phone-wifi-badge"
+           title="Type this address into Safari/Chrome on your phone while on home Wi-Fi">
+        <span>📱 Phone Wi-Fi Link:</span>
+        <strong id="phone-wifi-link" style="color:var(--primary);">Detecting...</strong>
+      </div>
       <div class="hw-badge" id="hw-badge">
         <span>Hardware:</span>
         <span class="tier-tag" id="hw-tier">Probing...</span>
@@ -776,6 +781,10 @@ def GET_PWA_HTML() -> str:
         document.getElementById('hw-tier').innerText = hw.active_tier_ceiling || 'Unknown';
         document.getElementById('hw-badge').title =
           `${hw.os_name} | RAM: ${hw.total_ram_gb}GB | Accel: ${hw.accelerator}`;
+        const wifiLink = document.getElementById('phone-wifi-link');
+        if (wifiLink) {
+          wifiLink.innerText = hw.local_lan_url || window.location.origin;
+        }
       } catch (e) {
         console.error('Failed to probe hardware', e);
       }

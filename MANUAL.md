@@ -1,139 +1,166 @@
 # NutriVault User Guide 🥗📱
 
-Welcome to **NutriVault**, your private, personal, and family nutrition companion. NutriVault helps you and your household track meals, understand nutrition, and scan grocery barcodes—completely private, with zero ads, and zero cloud tracking.
+Welcome to **NutriVault**, your private, personal, and family nutrition companion. NutriVault helps you and your household track meals, understand nutrition, and scan grocery barcodes—100% private, with zero ads, zero subscriptions, and zero cloud tracking.
+
+You do **not** need any programming or command-line experience to use NutriVault.
 
 ---
 
 ## Table of Contents
 
-1. [60-Second Quickstart](#1-60-second-quickstart)
-2. [Installing NutriVault on Your Phone (PWA)](#2-installing-nutrivault-on-your-phone-pwa)
-3. [Managing Household Profiles & Goals](#3-managing-household-profiles--goals)
+1. [Step-by-Step: Download & Double-Click Start](#1-step-by-step-download--double-click-start)
+2. [Installing NutriVault on Your Phone (No App Store Needed)](#2-installing-nutrivault-on-your-phone-no-app-store-needed)
+3. [Managing Household Profiles & Nutrition Goals](#3-managing-household-profiles--nutrition-goals)
 4. [Logging Meals at Home](#4-logging-meals-at-home)
    - [Instant Search (Staple Foods)](#instant-search-staple-foods)
    - [Meal Photos (Private Camera AI)](#meal-photos-private-camera-ai)
    - [Family Cooking Splitter (Cook Once, Log for Everyone)](#family-cooking-splitter-cook-once-log-for-everyone)
-5. [3-Tier Grocery Barcode Scanner](#5-3-tier-grocery-barcode-scanner)
-6. ["Snap & Sync Later" (Restaurants & Travel Mode)](#6-snap--sync-later-restaurants--travel-mode)
+5. [In-Store Grocery Barcode Scanner (Works Online & Offline)](#5-in-store-grocery-barcode-scanner-works-online--offline)
+6. ["Snap & Sync Later" (Restaurants & Travel Away from Your Computer)](#6-snap--sync-later-restaurants--travel-away-from-your-computer)
 7. [7-Day Trends & Intermittent Fasting Windows](#7-7-day-trends--intermittent-fasting-windows)
-8. [Backing Up Your Nutrition Data](#8-backing-up-your-nutrition-data)
+8. [Backing Up Your Nutrition History](#8-backing-up-your-nutrition-history)
 
 ---
 
-## 1. 60-Second Quickstart
+## 1. Step-by-Step: Download & Double-Click Start
 
-NutriVault runs right on your home computer or server.
+NutriVault runs right on your home Mac or Windows computer. Follow these 3 simple steps:
 
-### Launching NutriVault
-Open your computer terminal and start the turnkey service:
-```bash
-docker compose up
-```
+### Step 1: Download the NutriVault Folder (1 Click)
+1. Click this direct link to download NutriVault to your computer:  
+   👉 **[Download NutriVault (.zip)](https://github.com/codeja3/NutriVault/archive/refs/heads/main.zip)**
+2. Open your computer's **Downloads** folder.
+3. Unzip the downloaded `NutriVault-main.zip` file:
+   * **On Mac:** Double-click `NutriVault-main.zip` to unpack the **`NutriVault-main`** folder.
+   * **On Windows:** Right-click `NutriVault-main.zip`, click **"Extract All..."**, and click **Extract**.
+4. *(Recommended)* Drag the unpacked **`NutriVault-main`** folder to your **Desktop** or **Applications / Documents** folder so it's always easy to find.
 
-Open your browser and navigate to:
-```
+### Step 2: Double-Click to Launch NutriVault
+Open the **`NutriVault-main`** folder you just unpacked:
+
+* **On a Mac:**
+  1. Look for the file named **`Start_NutriVault.command`** and **double-click** it.
+  2. *First-Time Mac Tip:* If macOS shows a security popup saying *"Start_NutriVault.command cannot be opened because it is from an unidentified developer"*, simply **Right-Click** (or Control-Click) **`Start_NutriVault.command`**, choose **Open** from the menu, and click **Open** in the dialog box. You only ever have to do this once!
+* **On Windows:**
+  1. Look for the file named **`Start_NutriVault.bat`** and **double-click** it.
+  2. *First-Time Windows Tip:* If Windows SmartScreen shows a blue *"Windows protected your PC"* popup, click **"More info"** and then click **"Run anyway"**.
+
+### Step 3: Your Web Browser Opens Automatically!
+A small status window will appear to start NutriVault (and automatically finish a one-time setup if it's your very first launch), and your default web browser will automatically open to:
+```text
 http://localhost:8080
 ```
-NutriVault will immediately open with its full library of staple foods pre-loaded!
+*(Keep that small background window open while you use NutriVault, or minimize it to your Dock/Taskbar.)*
 
 ---
 
-## 2. Installing NutriVault on Your Phone (PWA)
+## 2. Installing NutriVault on Your Phone (No App Store Needed)
 
-You don't need an app store. NutriVault installs directly as a lightweight, lightning-fast app on your home screen:
+You can use NutriVault right on your iPhone or Android phone—both at home and when you are out at a restaurant or grocery store!
 
-### On iPhone (Safari)
-1. On your iPhone, connect to your home Wi-Fi and open Safari.
-2. Go to `http://<your-computer-ip>:8080` (or `http://nutrivault.local:8080`).
-3. Tap the **Share** button (the box with an upward arrow at the bottom of the screen).
-4. Scroll down and tap **"Add to Home Screen"**.
-5. Tap **Add**. The NutriVault icon 🥗 will now appear on your phone's home screen.
+### Step 1: Find Your "Phone Wi-Fi Link" at the Top of the Screen
+Look at the top-right header of the NutriVault screen on your computer. You will see a green badge that shows your computer's exact home Wi-Fi address, for example:
+> **📱 Phone Wi-Fi Link:** `http://192.168.1.42:8080`
 
-### On Android (Chrome)
-1. Connect to your home Wi-Fi and open Chrome.
-2. Go to `http://<your-computer-ip>:8080`.
-3. Tap the **three dots** in the top right corner.
-4. Select **"Install app"** or **"Add to Home screen"**.
+*(You don't need to search through your computer settings—NutriVault finds and displays this address for you automatically!)*
 
-Once installed, NutriVault opens full-screen like a native app and works offline when you're away from home!
+### Step 2: Add NutriVault to Your Phone's Home Screen
+
+#### On iPhone (Safari)
+1. Make sure your iPhone is connected to the **same home Wi-Fi** as your computer.
+2. Open **Safari** on your iPhone and type the exact **`📱 Phone Wi-Fi Link`** shown on your computer screen (for example, `http://192.168.1.42:8080`).
+3. Tap the **Share** button at the bottom of Safari (the square with an upward arrow).
+4. Scroll down and tap **"Add to Home Screen"**, then tap **Add**.
+5. The **NutriVault 🥗** app icon is now on your iPhone home screen!
+
+#### On Android (Chrome)
+1. Connect your Android phone to the **same home Wi-Fi** as your computer.
+2. Open **Chrome** and type the exact **`📱 Phone Wi-Fi Link`** shown on your computer screen (for example, `http://192.168.1.42:8080`).
+3. Tap the **three dots (⋮)** in the top-right corner of Chrome.
+4. Tap **"Install app"** or **"Add to Home screen"**.
+
+Once added to your home screen, NutriVault opens full-screen like a native app and **stays usable even when you leave home!**
 
 ---
 
-## 3. Managing Household Profiles & Goals
+## 3. Managing Household Profiles & Nutrition Goals
 
-NutriVault is designed for individuals and families:
+NutriVault is built for individuals, athletes, and whole families:
 
-* **Switch Profiles:** Select any family member from the top dropdown.
-* **Add a Profile:** Tap **"+ New"** to add a family member, athlete, or child.
-* **Nutrition Goals:** Set daily targets for Calories, Protein, Carbs, Fat, and Fiber.
-* **Health Safeguards:**
-  * **Athletic Goals:** Automatically calculates baseline targets for endurance, strength, or balanced training.
-  * **Medical Conditions:** NutriVault protects your safety. If a profile is marked with a chronic medical condition, automatic AI targets are locked to ensure you consult your registered dietitian or physician.
+* **Create a Profile:** Click **"+ New"** under **Household Profile & Targets** to add yourself, your partner, or your children.
+* **Switch Profiles:** Use the dropdown menu to view or update any family member's targets and dashboard.
+* **Daily Nutrition Goals:** Enter your daily targets for Calories, Protein, Carbs, Fat, and Fiber, then click **Save Targets**.
+* **Built-In Health Safeguards:**
+  * **Athletic Profiles:** Click **"AI Goal Advisor"**, enter your body weight in kg, and NutriVault will suggest heuristic training targets. Review the trainer advisory banner, check the acknowledgment box, and click **Save Targets**.
+  * **Chronic Health Conditions:** If a profile is marked as **Chronic Health Condition** (such as Crohn's, Lupus, or Kidney concerns), automatic AI target suggestions are permanently locked for your safety so that your targets are set strictly with your physician or registered dietitian.
 
 ---
 
 ## 4. Logging Meals at Home
 
 ### Instant Search (Staple Foods)
-1. Type what you're eating into the search bar (e.g., `brown rice`, `chicken breast`, `eggs`, `spinach`).
-2. Enter your portion size in grams (default is 100g).
-3. Tap **Search** and then **+ Add** to place it into your current dish draft.
+1. In the **Build & Log Dish** card, type a food into the search box (e.g., `brown rice`, `chicken breast`, `oats`, `eggs`, `broccoli`).
+2. Enter your portion weight in **grams** (default is `100`).
+3. Click **Search**, then click **+ Add** next to the matching food to add it to your **Current Dish Draft**.
+4. You can adjust the gram weight of any item directly in the draft table at any time!
 
 ### Meal Photos (Private Camera AI)
-1. Snap a photo of your plate or upload an existing photo.
-2. NutriVault's private vision AI identifies the foods and estimates their weights.
-3. **100% Private:** Photos stay strictly in temporary memory while being analyzed. Your photos are never saved to disk and are completely erased immediately after review.
+1. Click **Choose File** (or tap to open your camera on mobile) under **Ephemeral Meal Photo**, select a photo of your plate, and click **Upload Photo**.
+2. If Camera AI is running (automatically included if you have Docker Desktop installed, or via the 1-click **VLM Setup Guide ℹ️** button at the top right), NutriVault identifies each food on your plate and estimates its weight in grams.
+3. **100% Private:** Your photo is analyzed strictly in temporary memory (`RAM`) and is immediately erased (`0x00`) the moment recognition finishes. No food photos are ever saved to your hard drive or sent to the cloud.
 
 ### Family Cooking Splitter (Cook Once, Log for Everyone)
-Cooking a large shared meal (like a family stew, casserole, or pasta dish)?
-1. Add all the ingredients of the entire recipe to your draft.
-2. Scroll to the **Family Batch Portion Allocator**.
-3. Adjust the sliders for each household member (e.g., Parent A: 40%, Parent B: 35%, Kid: 25%).
-4. Choose your meal type (**Breakfast**, **Lunch**, **Dinner**, or **Snack**).
-5. Tap **"Commit Meal to Ledger"**. NutriVault automatically calculates and logs everyone's exact portion in one tap!
+Made a big pot of chili, pasta, or roasted vegetables for the whole family?
+1. Add all the ingredients for the entire pot into **Current Dish Draft** and give the dish a name (e.g., `"Sunday Family Lasagna"`).
+2. Scroll down to **Family Batch Portion Allocator**.
+3. Drag the percentage sliders for each family member who ate a portion (for example: *Alex: 45%*, *Sam: 35%*, *Child: 20%* — any total up to 100%).
+4. Select the **Meal Type** (*Breakfast*, *Lunch*, *Dinner*, *Snack*, *Pre-Workout*, or *Post-Workout*) and click **"Commit Meal to Ledger"**.
+5. NutriVault automatically calculates and logs each person's exact share of calories, macros, and vitamins in a single click!
 
 ---
 
-## 5. 3-Tier Grocery Barcode Scanner
+## 5. In-Store Grocery Barcode Scanner (Works Online & Offline)
 
-Scan groceries effortlessly in your kitchen or at the store:
+Whether you are in your kitchen or standing in a grocery store aisle away from your computer, you can scan packaged food barcodes right from your phone:
 
-* **Tier 1 (Instant Local Lookups):** Scans against your local catalog on your phone in under 10 milliseconds—even with zero Wi-Fi or cellular signal!
-* **Tier 2 (Home Server Lookups):** Queries your home database for any item previously registered in your household.
-* **Tier 3 (1-Tap Custom Barcode Registration):** Scanned a brand new packaged food? NutriVault immediately prompts you with a quick form: enter the calories, protein, carbs, and fat from the nutrition label on the box. Once saved, it's permanently stored and recognized forever across all your devices!
-
-### How to Scan
-* **Camera Scanning:** Tap **"📷 Camera"**, point your phone camera at the barcode, and NutriVault will scan it automatically.
-* **Manual Entry:** If your camera is busy, type the barcode number (e.g., `0030000010204`) into the box and tap **Lookup**.
+1. Under **Grocery Barcode Scanner**, tap **"📷 Camera"** and point your phone camera at the product's barcode (or type the barcode digits into the box and tap **Lookup**).
+2. **How NutriVault Handles Barcodes (Even Offline!):**
+   * **Tier 1 — Instant Phone Cache (<10 milliseconds):** Every staple and previously scanned product is automatically saved in your phone's memory. Even if you have **zero Wi-Fi or cell service** in the store, familiar items appear instantaneously!
+   * **Tier 2 — Home Computer Lookup or Offline Queue:** If you are at home, NutriVault checks your home computer's database. If you are away from home (offline) and scan a brand-new item, NutriVault asks if you want to **Queue it for Sync**—recording the barcode, portion grams, and exact time you ate it so it resolves automatically when you get back home!
+   * **Tier 3 — 1-Tap Custom Barcode Save:** If a local store brand isn't in your catalog yet, a quick popup lets you type the Product Name and the per-100g Calories, Protein, Carbs, Fat, and Fiber from the package label. Once you tap **Save Barcode**, your vault remembers that barcode forever for instant Tier-1 offline scans on every future shopping trip!
 
 ---
 
-## 6. "Snap & Sync Later" (Restaurants & Travel Mode)
+## 6. "Snap & Sync Later" (Restaurants & Travel Away from Your Computer)
 
-What happens when you're eating at a restaurant or travelling away from your home computer?
+What happens when your laptop is at home (or closed in your hotel room) and you are out at a restaurant or travelling?
 
-NutriVault features **Snap & Sync Later**:
-1. When you leave home, NutriVault automatically switches to **Offline Mode**.
-2. Search staple foods, scan grocery barcodes, and log your meals as usual.
-3. Your meals are saved safely in your phone's local offline queue, preserving the exact date and time you ate.
-4. When you reconnect to your home Wi-Fi, NutriVault will automatically sync your meals to your permanent diary! You can also tap **"Sync Now 🔄"** at any time.
+1. Open the **NutriVault** icon from your phone's home screen.
+2. The banner at the top will automatically show:  
+   🟡 **`Offline Mode — Snap & Sync Later Active`**
+3. While offline, you can:
+   * **Search USDA staple foods** (using your phone's built-in offline food catalog) and tap **Commit Meal to Ledger** to save the meal to your phone's offline queue.
+   * **Snap a photo of your restaurant plate** and tap **Upload Photo**—NutriVault stores the photo and the exact time you ate inside your phone's private queue.
+   * **Scan grocery barcodes** and queue them for sync.
+4. Notice the **`Pending Sync`** counter at the top of your screen increase as you log items on the go.
+5. **Automatic Sync When Back Home:** The moment your phone reconnects to your home Wi-Fi (or your laptop), NutriVault automatically flushes your queued meals, barcodes, and photos to your computer, records them under the **exact original time you ate**, and updates your analytics! You can also tap **"Sync Now 🔄"** anytime.
 
 ---
 
 ## 7. 7-Day Trends & Intermittent Fasting Windows
 
-NutriVault tracks your health over time:
+Scroll to **Rolling 7-Day Analytics & Chrononutrition** to see your progress:
 
-* **Rolling 7-Day Averages:** Shows your smoothed daily calorie and macronutrient intake, filtering out day-to-day noise.
-* **Target Adherence:** Highlights whether you are on track with your goals with clear positive and negative indicators.
-* **Intermittent Fasting & Eating Windows:** Automatically computes when you ate your first meal, your last meal, how many hours your eating window lasted, and your overnight fast between consecutive days.
+* **7-Day EMA Cards:** Shows your smoothed 7-day rolling average for Calories, Protein, Carbs, Fat, and Fiber—plus how close you are to your daily target envelope (`+` or `-`).
+* **Feeding Intervals & Overnight Fasts:** Automatically tracks the time of your **First Meal** and **Last Meal** each day, calculates your daily **Eating Window** (in hours), and computes your **Overnight Fast** between consecutive days.
 
 ---
 
-## 8. Backing Up Your Nutrition Data
+## 8. Backing Up Your Nutrition History
 
-All your profiles, meal journals, and custom foods are stored in a single file on your computer:
-```
+You own 100% of your data. Everything you log is stored in a single file inside your `NutriVault-main` folder:
+```text
 data/nutrivault.db
 ```
-To back up your entire history, simply copy `data/nutrivault.db` to a backup drive or cloud folder. To restore, place it back into `data/`. That's it!
+* **To back up your data:** Copy the `nutrivault.db` file from the `data` folder onto a USB drive or your personal backup folder.
+* **To restore your data on a new computer:** Place your `nutrivault.db` file back into the `data` folder and double-click `Start_NutriVault`!

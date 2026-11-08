@@ -59,3 +59,34 @@ def test_docker_compose_turnkey_vlm_sidecar_and_remote_profile():
     assert "tailscale/tailscale" in content
     assert "profiles:" in content
     assert "remote" in content
+
+
+def test_double_click_desktop_launchers_exist():
+    """Verify Start_NutriVault.command (macOS) and Start_NutriVault.bat (Windows) exist."""
+    import os
+    from pathlib import Path
+
+    repo_root = Path(__file__).parent.parent
+
+    mac_launcher = repo_root / "Start_NutriVault.command"
+    assert mac_launcher.exists(), "Start_NutriVault.command must exist at repo root"
+    assert os.access(mac_launcher, os.X_OK), "Start_NutriVault.command must be executable"
+    mac_text = mac_launcher.read_text()
+    assert 'cd "$(dirname "$0")"' in mac_text
+    assert "--open-browser" in mac_text or "http://localhost:8080" in mac_text
+
+    win_launcher = repo_root / "Start_NutriVault.bat"
+    assert win_launcher.exists(), "Start_NutriVault.bat must exist at repo root"
+    win_text = win_launcher.read_text()
+    assert 'cd /d "%~dp0"' in win_text
+    assert "--open-browser" in win_text or "http://localhost:8080" in win_text
+
+    manual_file = repo_root / "MANUAL.md"
+    assert manual_file.exists()
+    manual_text = manual_file.read_text()
+    assert "https://github.com/codeja3/NutriVault/archive/refs/heads/main.zip" in manual_text
+    assert "Start_NutriVault.command" in manual_text
+    assert "Start_NutriVault.bat" in manual_text
+    assert "Phone Wi-Fi Link" in manual_text
+    assert "git clone" not in manual_text
+    assert "uv venv" not in manual_text

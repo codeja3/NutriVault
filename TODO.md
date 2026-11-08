@@ -265,10 +265,10 @@
   - [x] `GREEN`: Implement `GET_PWA_SERVICE_WORKER()` and update `GET_PWA_HTML()` in `src/ui.py`, and wire `GET /sw.js` in `src/api.py`.
   - [x] `REFACTOR`: Ensure strict DOM XSS escaping (`escapeHtml`) and zero external CDN references across `src/ui.py`.
 
-- [ ] **Task 12.5: Turnkey One-Stop `docker-compose.yml` with Preconfigured `SmolVLM-500M` Sidecar & Optional P2P Remote Profile**
-  - [ ] `RED`: Author tests in `tests/test_env.py` asserting `docker-compose.yml` defines the `nutrivault-vlm` service preconfigured with `SmolVLM-500M-Instruct-Q8_0` and the optional `remote` profile for away-from-home P2P access.
-  - [ ] `GREEN`: Update `docker-compose.yml` with the preconfigured `nutrivault-vlm` sidecar (`--hf-repo ggml-org/SmolVLM-500M-Instruct-GGUF`) and optional `nutrivault-remote` Tailscale sidecar profile.
-  - [ ] `REFACTOR`: Verify environment variable wiring (`NUTRIVAULT_VLM_URL`) and volume mounts.
+- [x] **Task 12.5: Turnkey One-Stop `docker-compose.yml` with Preconfigured `SmolVLM-500M` Sidecar & Optional P2P Remote Profile**
+  - [x] `RED`: Author tests in `tests/test_env.py` asserting `docker-compose.yml` defines the `nutrivault-vlm` service preconfigured with `SmolVLM-500M-Instruct-Q8_0` and the optional `remote` profile for away-from-home P2P access.
+  - [x] `GREEN`: Update `docker-compose.yml` with the preconfigured `nutrivault-vlm` sidecar (`--hf-repo ggml-org/SmolVLM-500M-Instruct-GGUF`) and optional `nutrivault-remote` Tailscale sidecar profile.
+  - [x] `REFACTOR`: Verify environment variable wiring (`NUTRIVAULT_VLM_URL`) and volume mounts.
 
 - [ ] **Task 12.6: Role-Separated Documentation Overhaul (`README.md`, `MANUAL.md` for Average Users, `DEV_MANUAL.md` for Developers)**
   - [ ] `RED`: Audit `README.md` and `MANUAL.md` to identify all developer-only instructions (`uv`, `git` cloning/branching, pytest, SQLite DDL, raw `curl` payloads) that belong in `DEV_MANUAL.md`.

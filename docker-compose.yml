@@ -13,4 +13,37 @@ services:
       - NUTRIVAULT_HOST=0.0.0.0
       - NUTRIVAULT_PORT=8080
       - NUTRIVAULT_DB=/app/data/nutrivault.db
+      - NUTRIVAULT_VLM_URL=http://nutrivault-vlm:8081/v1/chat/completions
+    depends_on:
+      - nutrivault-vlm
+    restart: unless-stopped
+
+  nutrivault-vlm:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    container_name: nutrivault-vlm
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./models:/root/.cache/llama.cpp
+    command: >
+      --hf-repo ggml-org/SmolVLM-500M-Instruct-GGUF
+      --hf-file SmolVLM-500M-Instruct-Q8_0.gguf
+      --port 8081
+      --host 0.0.0.0
+    restart: unless-stopped
+
+  nutrivault-remote:
+    image: tailscale/tailscale:latest
+    container_name: nutrivault-remote
+    profiles:
+      - remote
+    environment:
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+    volumes:
+      - ./tailscale:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
     restart: unless-stopped

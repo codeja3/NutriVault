@@ -35,3 +35,27 @@ def test_docker_configuration_and_compose_files():
 
     dockerignore = repo_root / ".dockerignore"
     assert dockerignore.exists(), ".dockerignore must exist at repo root"
+
+
+def test_docker_compose_turnkey_vlm_sidecar_and_remote_profile():
+    """Verify docker-compose.yml defines preconfigured SmolVLM sidecar & remote profile."""
+    from pathlib import Path
+
+    repo_root = Path(__file__).parent.parent
+    compose_file = repo_root / "docker-compose.yml"
+    assert compose_file.exists()
+    content = compose_file.read_text()
+
+    # Preconfigured VLM sidecar
+    assert "nutrivault-vlm:" in content
+    assert "ghcr.io/ggerganov/llama.cpp:server" in content
+    assert "SmolVLM-500M-Instruct-GGUF" in content
+    assert "SmolVLM-500M-Instruct-Q8_0.gguf" in content
+    assert "8081:8081" in content
+    assert "./models:/root/.cache/llama.cpp" in content
+
+    # Optional remote P2P access
+    assert "nutrivault-remote:" in content
+    assert "tailscale/tailscale" in content
+    assert "profiles:" in content
+    assert "remote" in content

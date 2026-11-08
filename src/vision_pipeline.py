@@ -4,6 +4,7 @@ import base64
 import gc
 import io
 import json
+import os
 import re
 import urllib.error
 import urllib.parse
@@ -159,13 +160,17 @@ def _post_loopback_json(
 class VLMClient:
     """Embedded loopback client communicating with local llama.cpp /v1/chat/completions."""
 
-    def __init__(self, endpoint_url: str = "http://127.0.0.1:8081/v1/chat/completions"):
+    def __init__(self, endpoint_url: str | None = None):
+        if endpoint_url is None:
+            endpoint_url = os.environ.get(
+                "NUTRIVAULT_VLM_URL", "http://127.0.0.1:8081/v1/chat/completions"
+            )
         parsed = urllib.parse.urlparse(endpoint_url)
         hostname = (parsed.hostname or "").lower()
-        if hostname not in {"127.0.0.1", "localhost", "::1"}:
+        if hostname not in {"127.0.0.1", "localhost", "::1", "nutrivault-vlm"}:
             raise ValueError(
                 f"VLM endpoint URL '{endpoint_url}' is not a local loopback address. "
-                "Must be '127.0.0.1', 'localhost', or '::1' to prevent WAN SSRF."
+                "Must be '127.0.0.1', 'localhost', '::1', or 'nutrivault-vlm' to prevent WAN SSRF."
             )
         self.endpoint_url = endpoint_url
 

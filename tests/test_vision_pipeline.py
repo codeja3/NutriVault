@@ -221,6 +221,8 @@ def test_vlm_client_ssrf_non_loopback_rejected():
     assert c2.endpoint_url == "http://localhost:8080/v1/chat/completions"
     c3 = VLMClient(endpoint_url="http://[::1]:8080/v1/chat/completions")
     assert c3.endpoint_url == "http://[::1]:8080/v1/chat/completions"
+    c4 = VLMClient(endpoint_url="http://nutrivault-vlm:8081/v1/chat/completions")
+    assert c4.endpoint_url == "http://nutrivault-vlm:8081/v1/chat/completions"
 
 
 def test_vlm_client_default_port_is_8081_to_avoid_daemon_collision():

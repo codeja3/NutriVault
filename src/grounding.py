@@ -5,9 +5,37 @@ import json
 import re
 import sqlite3
 from dataclasses import dataclass
+from typing import Any
 
 STATE_TOKENS = {"cooked", "steamed", "roasted", "boiled", "fried", "raw", "prepared", "baked"}
 PREPARED_STATES = {"cooked", "prepared", "steamed", "roasted", "boiled", "fried", "baked"}
+
+
+class BarcodeNotFoundError(ValueError):
+    """Raised when an exact barcode lookup fails to find a matching product."""
+
+    error_code = "ERR_BARCODE_NOT_FOUND"
+
+
+def normalize_barcode(code: str) -> str:
+    """Normalize and validate a barcode string."""
+    cleaned = code.strip()
+    if not cleaned or not re.fullmatch(r"[A-Za-z0-9_-]{4,32}", cleaned):
+        raise ValueError(
+            f"Invalid barcode format '{code}'. Must be 4-32 alphanumeric characters, "
+            "dashes, or underscores."
+        )
+    return cleaned
+
+
+@dataclass(frozen=True)
+class GroundedFoodCandidate:
+    fdc_id: int
+    description: str
+    food_category: str | None
+    preparation_state: str
+    barcode: str | None
+    nutrients: "NutrientProfile"
 
 
 @dataclass(frozen=True)
@@ -77,6 +105,7 @@ class CachedFoodEntry:
     description: str
     food_category: str | None
     preparation_state: str
+    barcode: str | None
     calories_per_100g: float
     protein_g_per_100g: float
     carbs_g_per_100g: float
@@ -131,27 +160,39 @@ class GroundingEngine:
                     active_schema = "usda_reference"
 
         if active_schema == "usda":
+            cursor.execute("PRAGMA usda.table_info(usda_foods);")
+            cols = {row[1] for row in cursor.fetchall()}
+            barcode_col = "barcode," if "barcode" in cols else "NULL AS barcode,"
             cursor.execute(
-                """
+                f"""
                 SELECT fdc_id, description, food_category, preparation_state,
+                       {barcode_col}
                        calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
                        fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
                 FROM usda.usda_foods;
                 """
             )
         elif active_schema == "usda_reference":
+            cursor.execute("PRAGMA usda_reference.table_info(usda_foods);")
+            cols = {row[1] for row in cursor.fetchall()}
+            barcode_col = "barcode," if "barcode" in cols else "NULL AS barcode,"
             cursor.execute(
-                """
+                f"""
                 SELECT fdc_id, description, food_category, preparation_state,
+                       {barcode_col}
                        calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
                        fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
                 FROM usda_reference.usda_foods;
                 """
             )
         else:
+            cursor.execute("PRAGMA main.table_info(usda_foods);")
+            cols = {row[1] for row in cursor.fetchall()}
+            barcode_col = "barcode," if "barcode" in cols else "NULL AS barcode,"
             cursor.execute(
-                """
+                f"""
                 SELECT fdc_id, description, food_category, preparation_state,
+                       {barcode_col}
                        calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
                        fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
                 FROM usda_foods;
@@ -164,18 +205,19 @@ class GroundingEngine:
             desc_tokens = normalize_food_text(desc)
             desc_set = set(desc_tokens)
             clean_desc_str = " ".join(desc_tokens)
-            micros = json.loads(r[9]) if r[9] else {}
+            micros = json.loads(r[10]) if r[10] else {}
             cache.append(
                 CachedFoodEntry(
                     fdc_id=r[0],
                     description=desc,
                     food_category=r[2],
                     preparation_state=r[3],
-                    calories_per_100g=r[4],
-                    protein_g_per_100g=r[5],
-                    carbs_g_per_100g=r[6],
-                    fat_g_per_100g=r[7],
-                    fiber_g_per_100g=r[8],
+                    barcode=r[4],
+                    calories_per_100g=r[5],
+                    protein_g_per_100g=r[6],
+                    carbs_g_per_100g=r[7],
+                    fat_g_per_100g=r[8],
+                    fiber_g_per_100g=r[9],
                     micros=micros,
                     clean_desc_str=clean_desc_str,
                     desc_tokens=desc_tokens,
@@ -184,6 +226,160 @@ class GroundingEngine:
             )
         self._cache = cache
         return self._cache
+
+    def lookup_barcode(self, barcode: str, grams: float = 100.0) -> GroundedFoodCandidate | None:
+        """Lookup an exact barcode match and scale nutrients deterministically to portion grams."""
+        if grams < 0.0:
+            raise ValueError(f"Portion weight in grams must be non-negative; got {grams}.")
+        normalized = normalize_barcode(barcode)
+        entries = self._load_cache_if_needed()
+        matched_entry: CachedFoodEntry | None = None
+        for entry in entries:
+            if entry.barcode == normalized:
+                matched_entry = entry
+                break
+        if matched_entry is None:
+            return None
+
+        dummy_match = GroundingMatch(
+            fdc_id=matched_entry.fdc_id,
+            description=matched_entry.description,
+            food_category=matched_entry.food_category,
+            preparation_state=matched_entry.preparation_state,
+            calories_per_100g=matched_entry.calories_per_100g,
+            protein_g_per_100g=matched_entry.protein_g_per_100g,
+            carbs_g_per_100g=matched_entry.carbs_g_per_100g,
+            fat_g_per_100g=matched_entry.fat_g_per_100g,
+            fiber_g_per_100g=matched_entry.fiber_g_per_100g,
+            micros_per_100g=matched_entry.micros,
+            score=1.0,
+        )
+        nutrients = calculate_linear_nutrients(dummy_match, grams)
+        return GroundedFoodCandidate(
+            fdc_id=matched_entry.fdc_id,
+            description=matched_entry.description,
+            food_category=matched_entry.food_category,
+            preparation_state=matched_entry.preparation_state,
+            barcode=matched_entry.barcode,
+            nutrients=nutrients,
+        )
+
+    def register_barcode(
+        self,
+        barcode: str,
+        description: str,
+        calories_per_100g: float,
+        protein_g_per_100g: float,
+        carbs_g_per_100g: float,
+        fat_g_per_100g: float,
+        fiber_g_per_100g: float,
+        micros_per_100g: dict[str, float] | None = None,
+        food_category: str = "Packaged Foods",
+        preparation_state: str = "prepared",
+    ) -> GroundedFoodCandidate:
+        """Upsert a packaged food barcode and nutrient profile into SQLite, invalidating cache."""
+        normalized = normalize_barcode(barcode)
+        micros = micros_per_100g or {}
+        micros_json = json.dumps(micros)
+
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT fdc_id FROM usda_foods WHERE barcode = ?;", (normalized,))
+        existing = cursor.fetchone()
+
+        if existing:
+            fdc_id = existing[0]
+            cursor.execute(
+                """
+                UPDATE usda_foods
+                SET description = ?, food_category = ?, preparation_state = ?,
+                    calories_per_100g = ?, protein_g_per_100g = ?, carbs_g_per_100g = ?,
+                    fat_g_per_100g = ?, fiber_g_per_100g = ?, micros_per_100g_json = ?
+                WHERE fdc_id = ?;
+                """,
+                (
+                    description,
+                    food_category,
+                    preparation_state,
+                    calories_per_100g,
+                    protein_g_per_100g,
+                    carbs_g_per_100g,
+                    fat_g_per_100g,
+                    fiber_g_per_100g,
+                    micros_json,
+                    fdc_id,
+                ),
+            )
+        else:
+            cursor.execute("SELECT COALESCE(MAX(fdc_id), 900000) FROM usda_foods;")
+            max_id = cursor.fetchone()[0]
+            fdc_id = max(max_id + 1, 900001)
+            cursor.execute(
+                """
+                INSERT INTO usda_foods (
+                    fdc_id, description, food_category, preparation_state, barcode,
+                    calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
+                    fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    fdc_id,
+                    description,
+                    food_category,
+                    preparation_state,
+                    normalized,
+                    calories_per_100g,
+                    protein_g_per_100g,
+                    carbs_g_per_100g,
+                    fat_g_per_100g,
+                    fiber_g_per_100g,
+                    micros_json,
+                ),
+            )
+
+        self.conn.commit()
+        self.invalidate_cache()
+
+        candidate_match = GroundingMatch(
+            fdc_id=fdc_id,
+            description=description,
+            food_category=food_category,
+            preparation_state=preparation_state,
+            calories_per_100g=calories_per_100g,
+            protein_g_per_100g=protein_g_per_100g,
+            carbs_g_per_100g=carbs_g_per_100g,
+            fat_g_per_100g=fat_g_per_100g,
+            fiber_g_per_100g=fiber_g_per_100g,
+            micros_per_100g=micros,
+            score=1.0,
+        )
+        return GroundedFoodCandidate(
+            fdc_id=fdc_id,
+            description=description,
+            food_category=food_category,
+            preparation_state=preparation_state,
+            barcode=normalized,
+            nutrients=calculate_linear_nutrients(candidate_match, 100.0),
+        )
+
+    def export_offline_catalog(self) -> list[dict[str, Any]]:
+        """Export all reference and custom food items formatted for client-side offline caching."""
+        entries = self._load_cache_if_needed()
+        return [
+            {
+                "fdc_id": e.fdc_id,
+                "description": e.description,
+                "food_category": e.food_category,
+                "preparation_state": e.preparation_state,
+                "barcode": e.barcode,
+                "calories_per_100g": e.calories_per_100g,
+                "protein_g_per_100g": e.protein_g_per_100g,
+                "carbs_g_per_100g": e.carbs_g_per_100g,
+                "fat_g_per_100g": e.fat_g_per_100g,
+                "fiber_g_per_100g": e.fiber_g_per_100g,
+                "micros_per_100g": e.micros,
+            }
+            for e in entries
+        ]
 
     def search_candidates(self, query: str, limit: int = 5) -> list[GroundingMatch]:
         """Rank USDA food records against query using token overlap and state weighting."""

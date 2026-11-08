@@ -417,3 +417,65 @@ def test_init_db_with_seed_defaults():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM usda_foods;")
     assert cursor.fetchone()[0] >= 25
+
+
+def test_usda_foods_schema_includes_barcode_column_and_index():
+    """usda_foods table must have a barcode column and idx_usda_foods_barcode index."""
+    conn = sqlite3.connect(":memory:")
+    init_db(conn)
+    cursor = conn.cursor()
+
+    cursor.execute("PRAGMA table_info(usda_foods);")
+    columns = {row[1] for row in cursor.fetchall()}
+    assert "barcode" in columns
+
+    cursor.execute("PRAGMA index_list(usda_foods);")
+    indexes = {row[1] for row in cursor.fetchall()}
+    assert "idx_usda_foods_barcode" in indexes
+
+
+def test_init_db_idempotent_barcode_migration():
+    """init_db must idempotently migrate pre-v1.3.0 tables lacking a barcode column."""
+    conn = sqlite3.connect(":memory:")
+    # Create legacy table without barcode column
+    conn.execute(
+        """
+        CREATE TABLE usda_foods (
+            fdc_id INTEGER PRIMARY KEY,
+            description TEXT NOT NULL,
+            food_category TEXT,
+            preparation_state TEXT NOT NULL DEFAULT 'unknown',
+            calories_per_100g REAL NOT NULL,
+            protein_g_per_100g REAL NOT NULL,
+            carbs_g_per_100g REAL NOT NULL,
+            fat_g_per_100g REAL NOT NULL,
+            fiber_g_per_100g REAL NOT NULL,
+            micros_per_100g_json TEXT NOT NULL DEFAULT '{}'
+        );
+        """
+    )
+    conn.commit()
+
+    # init_db should detect missing barcode and add it
+    init_db(conn)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(usda_foods);")
+    cols = {row[1] for row in cursor.fetchall()}
+    assert "barcode" in cols
+
+    # Second call must be idempotent
+    init_db(conn)
+
+
+def test_seed_default_usda_foods_includes_barcodes():
+    """Seeded default foods must include valid UPC/EAN barcodes on staple items."""
+    conn = sqlite3.connect(":memory:")
+    init_db(conn, seed_defaults=True)
+    cursor = conn.cursor()
+    cursor.execute("SELECT barcode, description FROM usda_foods WHERE barcode IS NOT NULL;")
+    rows = cursor.fetchall()
+    assert len(rows) >= 5
+    barcodes = [r[0] for r in rows]
+    for b in barcodes:
+        assert isinstance(b, str)
+        assert len(b) >= 8

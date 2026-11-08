@@ -246,10 +246,10 @@
   - [x] `GREEN`: Implement `PredefinedVLMModel`, `PREDEFINED_VLM_CATALOG`, `get_default_vlm_spec()`, and `build_managed_vlm_command()` in `src/hardware.py`, and expose `default_vlm` and `managed_vlm_command` in `GET /api/v1/hardware` (`src/api.py`).
   - [x] `REFACTOR`: Update `format_vlm_setup_guide()` to include the predefined `--hf-repo` command and approximate download size.
 
-- [ ] **Task 12.2: SQLite `barcode` Schema Migration, Seeded Staple Barcodes & Grounding Barcode Engine**
-  - [ ] `RED`: Author tests in `tests/test_db.py` and `tests/test_grounding.py` asserting idempotent `usda_foods.barcode` column creation/migration, `idx_usda_foods_barcode` index, seeded UPC/EAN barcodes in `DEFAULT_USDA_FOODS`, `normalize_barcode()`, `lookup_barcode()`, `register_barcode()`, and `export_offline_catalog()`.
-  - [ ] `GREEN`: Update `src/db.py` (`usda_foods` DDL, idempotent `ALTER TABLE` check in `init_db`, barcodes in `DEFAULT_USDA_FOODS`) and `src/grounding.py` (`normalize_barcode`, `lookup_barcode`, `register_barcode`, `export_offline_catalog`, and `BarcodeNotFoundError`).
-  - [ ] `REFACTOR`: Ensure `GroundingEngine` cache invalidates cleanly on `register_barcode()` and supports attached `usda`/`usda_reference` schemas.
+- [x] **Task 12.2: SQLite `barcode` Schema Migration, Seeded Staple Barcodes & Grounding Barcode Engine**
+  - [x] `RED`: Author tests in `tests/test_db.py` and `tests/test_grounding.py` asserting idempotent `usda_foods.barcode` column creation/migration, `idx_usda_foods_barcode` index, seeded UPC/EAN barcodes in `DEFAULT_USDA_FOODS`, `normalize_barcode()`, `lookup_barcode()`, `register_barcode()`, and `export_offline_catalog()`.
+  - [x] `GREEN`: Update `src/db.py` (`usda_foods` DDL, idempotent `ALTER TABLE` check in `init_db`, barcodes in `DEFAULT_USDA_FOODS`) and `src/grounding.py` (`normalize_barcode`, `lookup_barcode`, `register_barcode`, `export_offline_catalog`, and `BarcodeNotFoundError`).
+  - [x] `REFACTOR`: Ensure `GroundingEngine` cache invalidates cleanly on `register_barcode()` and supports attached `usda`/`usda_reference` schemas.
 
 - [ ] **Task 12.3: Barcode Lookup, Custom Barcode Registration & Offline Batch Sync API Endpoints**
   - [ ] `RED`: Author offline contract tests in `tests/test_api.py` asserting:

@@ -309,3 +309,89 @@ def test_grounding_engine_queries_attached_usda_reference_schema(tmp_path):
     assert len(matches) == 1
     assert matches[0].fdc_id == 9002
     assert matches[0].description == "Lentils, mature seeds, cooked, boiled"
+
+
+def test_normalize_barcode():
+    """Verify barcode normalization and strict character/length validation."""
+    from src.grounding import normalize_barcode
+
+    assert normalize_barcode("0030000010204") == "0030000010204"
+    assert normalize_barcode("  012345678905  ") == "012345678905"
+    assert normalize_barcode("ABC-123_45") == "ABC-123_45"
+
+    for invalid in ("", "   ", "12", "123", "a" * 33, "123 456", "abc$123"):
+        with pytest.raises(ValueError):
+            normalize_barcode(invalid)
+
+
+def test_lookup_barcode_and_export_offline_catalog():
+    """Verify exact barcode resolution, linear scaling, and offline catalog export."""
+    from src.db import init_db
+    from src.grounding import GroundingEngine
+
+    conn = sqlite3.connect(":memory:")
+    init_db(conn, seed_defaults=True)
+    engine = GroundingEngine(conn)
+
+    # Export catalog
+    catalog = engine.export_offline_catalog()
+    assert isinstance(catalog, list)
+    assert len(catalog) >= 25
+    sample = catalog[0]
+    assert "fdc_id" in sample
+    assert "description" in sample
+    assert "barcode" in sample
+    assert "calories_per_100g" in sample
+
+    # Find item with barcode
+    barcoded_item = next((item for item in catalog if item["barcode"]), None)
+    assert barcoded_item is not None
+    code = barcoded_item["barcode"]
+
+    # Lookup by barcode with scaling
+    match = engine.lookup_barcode(code, grams=200.0)
+    assert match is not None
+    assert match.barcode == code
+    assert match.nutrients.grams == 200.0
+    assert match.nutrients.calories == round(barcoded_item["calories_per_100g"] * 2.0, 2)
+
+    # Non-existent barcode
+    assert engine.lookup_barcode("0000000000000") is None
+
+    # Invalid grams
+    with pytest.raises(ValueError):
+        engine.lookup_barcode(code, grams=-10.0)
+
+
+def test_register_barcode_and_cache_invalidation():
+    """Registering a custom barcode persists to SQLite and invalidates cache."""
+    from src.db import init_db
+    from src.grounding import GroundingEngine
+
+    conn = sqlite3.connect(":memory:")
+    init_db(conn)
+    engine = GroundingEngine(conn)
+
+    # Initially empty
+    assert engine.lookup_barcode("078742351896") is None
+
+    # Register new barcode
+    registered = engine.register_barcode(
+        barcode="078742351896",
+        description="Greek Nonfat Yogurt",
+        calories_per_100g=59.0,
+        protein_g_per_100g=10.0,
+        carbs_g_per_100g=3.6,
+        fat_g_per_100g=0.4,
+        fiber_g_per_100g=0.0,
+        micros_per_100g={"calcium_mg": 110.0},
+    )
+    assert registered.barcode == "078742351896"
+    assert registered.nutrients.grams == 100.0
+    assert registered.nutrients.calories == 59.0
+
+    # Query again should immediately resolve from refreshed cache
+    resolved = engine.lookup_barcode("078742351896", grams=200.0)
+    assert resolved is not None
+    assert resolved.nutrients.grams == 200.0
+    assert resolved.nutrients.protein_g == 20.0

@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS usda_foods (
     carbs_g_per_100g REAL NOT NULL CHECK (carbs_g_per_100g >= 0.0),
     fat_g_per_100g REAL NOT NULL CHECK (fat_g_per_100g >= 0.0),
     fiber_g_per_100g REAL NOT NULL CHECK (fiber_g_per_100g >= 0.0),
-    micros_per_100g_json TEXT NOT NULL DEFAULT '{}'
+    micros_per_100g_json TEXT NOT NULL DEFAULT '{}',
+    barcode TEXT
 );
 
 -- 2. Household Profiles Table
@@ -99,6 +100,9 @@ ON target_envelopes (profile_id) WHERE is_active = 1;
 
 CREATE INDEX IF NOT EXISTS idx_usda_foods_description
 ON usda_foods (description);
+
+CREATE INDEX IF NOT EXISTS idx_usda_foods_barcode
+ON usda_foods (barcode);
 """
 
 # Curated catalog of staple raw and cooked foods for out-of-the-box operation
@@ -144,6 +148,7 @@ DEFAULT_USDA_FOODS: list[dict[str, object]] = [
         "micros_per_100g_json": json.dumps(
             {"potassium_mg": 68.0, "magnesium_mg": 26.0, "iron_mg": 0.9, "calcium_mg": 10.0}
         ),
+        "barcode": "0030000010204",
     },
     {
         "fdc_id": 1004,
@@ -158,6 +163,7 @@ DEFAULT_USDA_FOODS: list[dict[str, object]] = [
         "micros_per_100g_json": json.dumps(
             {"potassium_mg": 172.0, "magnesium_mg": 64.0, "iron_mg": 1.49, "sodium_mg": 7.0}
         ),
+        "barcode": "0070552190134",
     },
     {
         "fdc_id": 1005,
@@ -172,6 +178,7 @@ DEFAULT_USDA_FOODS: list[dict[str, object]] = [
         "micros_per_100g_json": json.dumps(
             {"sodium_mg": 472.0, "potassium_mg": 248.0, "magnesium_mg": 82.0, "iron_mg": 2.47}
         ),
+        "barcode": "0072250037129",
     },
     {
         "fdc_id": 1006,
@@ -228,6 +235,7 @@ DEFAULT_USDA_FOODS: list[dict[str, object]] = [
         "micros_per_100g_json": json.dumps(
             {"potassium_mg": 237.0, "sodium_mg": 338.0, "iron_mg": 1.54, "magnesium_mg": 31.0}
         ),
+        "barcode": "0080000001103",
     },
     {
         "fdc_id": 1010,
@@ -270,6 +278,7 @@ DEFAULT_USDA_FOODS: list[dict[str, object]] = [
         "micros_per_100g_json": json.dumps(
             {"calcium_mg": 113.0, "potassium_mg": 132.0, "magnesium_mg": 10.0, "sodium_mg": 43.0}
         ),
+        "barcode": "0070042000035",
     },
     {
         "fdc_id": 1013,
@@ -284,6 +293,7 @@ DEFAULT_USDA_FOODS: list[dict[str, object]] = [
         "micros_per_100g_json": json.dumps(
             {"calcium_mg": 110.0, "potassium_mg": 141.0, "magnesium_mg": 11.0, "sodium_mg": 36.0}
         ),
+        "barcode": "0036632026116",
     },
     {
         "fdc_id": 1014,
@@ -298,6 +308,7 @@ DEFAULT_USDA_FOODS: list[dict[str, object]] = [
         "micros_per_100g_json": json.dumps(
             {"calcium_mg": 721.0, "potassium_mg": 98.0, "sodium_mg": 621.0, "magnesium_mg": 28.0}
         ),
+        "barcode": "0021000604647",
     },
     {
         "fdc_id": 1015,
@@ -312,6 +323,7 @@ DEFAULT_USDA_FOODS: list[dict[str, object]] = [
         "micros_per_100g_json": json.dumps(
             {"calcium_mg": 282.0, "iron_mg": 2.04, "potassium_mg": 121.0, "magnesium_mg": 58.0}
         ),
+        "barcode": "0025484000108",
     },
     {
         "fdc_id": 1016,
@@ -326,6 +338,7 @@ DEFAULT_USDA_FOODS: list[dict[str, object]] = [
         "micros_per_100g_json": json.dumps(
             {"potassium_mg": 355.0, "magnesium_mg": 60.0, "iron_mg": 2.1, "calcium_mg": 27.0}
         ),
+        "barcode": "0041415124036",
     },
     {
         "fdc_id": 1017,
@@ -508,6 +521,7 @@ DEFAULT_USDA_FOODS: list[dict[str, object]] = [
         "micros_per_100g_json": json.dumps(
             {"potassium_mg": 733.0, "magnesium_mg": 279.0, "calcium_mg": 269.0, "iron_mg": 3.71}
         ),
+        "barcode": "0041570054641",
     },
     {
         "fdc_id": 1030,
@@ -522,6 +536,7 @@ DEFAULT_USDA_FOODS: list[dict[str, object]] = [
         "micros_per_100g_json": json.dumps(
             {"potassium_mg": 1.0, "sodium_mg": 2.0, "iron_mg": 0.56}
         ),
+        "barcode": "0074847000105",
     },
 ]
 
@@ -538,8 +553,8 @@ def seed_default_usda_foods(conn: sqlite3.Connection) -> int:
     INSERT INTO usda_foods (
         fdc_id, description, food_category, preparation_state,
         calories_per_100g, protein_g_per_100g, carbs_g_per_100g,
-        fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        fat_g_per_100g, fiber_g_per_100g, micros_per_100g_json, barcode
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     """
     rows_to_insert = [
         (
@@ -553,6 +568,7 @@ def seed_default_usda_foods(conn: sqlite3.Connection) -> int:
             food["fat_g_per_100g"],
             food["fiber_g_per_100g"],
             food["micros_per_100g_json"],
+            food.get("barcode"),
         )
         for food in DEFAULT_USDA_FOODS
     ]
@@ -568,6 +584,16 @@ def init_db(conn: sqlite3.Connection, seed_defaults: bool = False) -> None:
         conn.execute("PRAGMA journal_mode = WAL;")
     except sqlite3.OperationalError:
         pass
+
+    # Idempotent migration for pre-v1.3.0 databases missing barcode column
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='usda_foods';")
+    if cursor.fetchone()[0] > 0:
+        cursor.execute("PRAGMA table_info(usda_foods);")
+        cols = {row[1] for row in cursor.fetchall()}
+        if cols and "barcode" not in cols:
+            conn.execute("ALTER TABLE usda_foods ADD COLUMN barcode TEXT;")
+
     conn.executescript(SCHEMA_DDL)
     conn.commit()
     if seed_defaults:

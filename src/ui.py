@@ -29,6 +29,83 @@ def GET_PWA_MANIFEST() -> str:
     return json.dumps(PWA_MANIFEST_DICT, indent=2)
 
 
+def GET_PWA_SERVICE_WORKER() -> str:
+    """Return vanilla Service Worker script providing offline-first caching with zero CDN links."""
+    return """const CACHE_NAME = 'nutrivault-cache-v1';
+const PRECACHE_URLS = [
+  '/',
+  '/manifest.json',
+  '/api/v1/profiles',
+  '/api/v1/foods/catalog'
+];
+
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.addAll(PRECACHE_URLS).catch(err => {
+        console.warn('Pre-cache warning:', err);
+      });
+    }).then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(keys => {
+      return Promise.all(
+        keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
+      );
+    }).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', event => {
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
+  const url = new URL(event.request.url);
+
+  // API calls: Network-first with cache fallback
+  if (url.pathname.startsWith('/api/v1/')) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Shell navigation and assets: Cache-first with network revalidation
+  event.respondWith(
+    caches.match(event.request).then(cached => {
+      const fetchPromise = fetch(event.request)
+        .then(networkResponse => {
+          if (networkResponse.ok) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(err => {
+          if (!cached && event.request.mode === 'navigate') {
+            return caches.match('/');
+          }
+          throw err;
+        });
+      return cached || fetchPromise;
+    })
+  );
+});
+"""
+
+
 def GET_PWA_HTML() -> str:
     """Return complete zero-build single-page application with zero external CDN dependencies."""
     return """<!DOCTYPE html>
@@ -228,6 +305,26 @@ def GET_PWA_HTML() -> str:
 
   <div id="vlm-guide-drawer" class="drawer"></div>
 
+  <div id="connectivity-banner" class="alert-banner"
+       style="display:flex; justify-content:space-between; align-items:center;
+              background:#1e293b; border:1px solid #334155; margin-bottom:16px;">
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span id="conn-indicator-dot"
+            style="width:10px; height:10px; border-radius:50%; background:var(--primary);
+                   display:inline-block;"></span>
+      <span id="conn-status-text" style="font-weight:600;">Online — Connected to Host</span>
+      <span id="offline-queue-badge"
+            style="background:#334155; padding:2px 8px; border-radius:12px;
+                   font-size:0.75rem; margin-left:8px;">
+        Pending Sync: 0
+      </span>
+    </div>
+    <button id="sync-queue-btn" class="secondary" style="padding:4px 10px; font-size:0.8rem;"
+            onclick="syncOfflineQueue()">
+      Sync Now 🔄
+    </button>
+  </div>
+
   <div class="grid grid-2">
     <!-- 1. Household Profiles & Target Envelopes -->
     <div class="card">
@@ -252,8 +349,7 @@ def GET_PWA_HTML() -> str:
         Local model fitness baselines are heuristic estimates. For rigorous training regimens
         or metabolic adjustments, consult a certified fitness trainer or cross-reference
         using privacy-preserving frontier endpoints
-        (<a href="https://search.brave.com/ask" target="_blank"
-            style="color:#fde68a;">search.brave.com/ask</a>).
+        (search.brave.com/ask).
         <div style="margin-top:8px;">
           <label style="font-size:0.8rem; display:flex; align-items:center; gap:6px;">
             <input type="checkbox" id="athletic-ack-checkbox" style="width:auto;">
@@ -326,6 +422,28 @@ def GET_PWA_HTML() -> str:
         </div>
         <div id="vlm-status" style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">
         </div>
+      </div>
+
+      <!-- Mode C: Grocery Barcode Scanner -->
+      <div style="padding-top:10px; border-top:1px dashed var(--card-border); margin-bottom:14px;">
+        <label style="font-size:0.8rem; font-weight:600;">
+          Mode C: Grocery Barcode Scanner (Tier 1-3 Offline / In-Browser):
+        </label>
+        <div style="display:flex; gap:8px; margin-top:4px;">
+          <input type="text" id="manual-barcode-input"
+                 placeholder="Scan or enter barcode (e.g. 0030000010204)"
+                 onkeyup="if(event.key==='Enter') lookupAndAddBarcode()">
+          <input type="number" id="barcode-grams" value="100" style="width:80px;"
+                 title="Portion in grams">
+          <button onclick="lookupAndAddBarcode()">Lookup</button>
+          <button class="secondary" id="toggle-camera-btn"
+                  onclick="toggleCameraScanner()">📷 Camera</button>
+        </div>
+        <video id="barcode-video" autoplay playsinline
+               style="display:none; width:100%; max-height:220px; border-radius:var(--radius);
+                      margin-top:8px; background:#000;"></video>
+        <div id="barcode-status"
+             style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;"></div>
       </div>
 
       <!-- Current Dish Draft -->
@@ -456,6 +574,55 @@ def GET_PWA_HTML() -> str:
     </div>
   </div>
 
+  <!-- Custom Barcode Registration Modal (Tier 3) -->
+  <div id="register-barcode-modal"
+       style="display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+              background:rgba(0,0,0,0.7); align-items:center; justify-content:center; z-index:999;">
+    <div class="card" style="width:420px; max-width:90%;">
+      <h2>📦 Register Custom Barcode (Tier 3)</h2>
+      <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:10px;">
+        Barcode not recognized. Enter nutrition facts per 100g to save to your local vault.
+      </p>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <div>
+          <label style="font-size:0.75rem;">Barcode</label>
+          <input type="text" id="custom-bc-code" readonly style="background:#1e293b;">
+        </div>
+        <div>
+          <label style="font-size:0.75rem;">Product Description</label>
+          <input type="text" id="custom-bc-desc" placeholder="e.g. Greek Nonfat Yogurt">
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+          <div>
+            <label style="font-size:0.75rem;">Calories / 100g</label>
+            <input type="number" id="custom-bc-cals" value="0">
+          </div>
+          <div>
+            <label style="font-size:0.75rem;">Protein (g) / 100g</label>
+            <input type="number" id="custom-bc-protein" value="0" step="0.1">
+          </div>
+          <div>
+            <label style="font-size:0.75rem;">Carbs (g) / 100g</label>
+            <input type="number" id="custom-bc-carbs" value="0" step="0.1">
+          </div>
+          <div>
+            <label style="font-size:0.75rem;">Fat (g) / 100g</label>
+            <input type="number" id="custom-bc-fat" value="0" step="0.1">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:0.75rem;">Fiber (g) / 100g</label>
+          <input type="number" id="custom-bc-fiber" value="0" step="0.1">
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px;">
+          <button class="secondary" onclick="closeBarcodeModal()">Cancel</button>
+          <button onclick="submitCustomBarcode()">Save Barcode</button>
+        </div>
+        <div id="custom-bc-status" style="font-size:0.8rem; margin-top:4px;"></div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // State
     let state = {
@@ -478,8 +645,125 @@ def GET_PWA_HTML() -> str:
         .replace(/'/g, '&#39;');
     }
 
+    // Service Worker Registration
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(err => {
+        console.warn('SW registration warning:', err);
+      });
+    }
+
+    // Online / Offline Connectivity Detection
+    function updateConnectionStatus() {
+      const isOnline = navigator.onLine;
+      const dot = document.getElementById('conn-indicator-dot');
+      const text = document.getElementById('conn-status-text');
+      if (dot && text) {
+        if (isOnline) {
+          dot.style.background = 'var(--primary)';
+          text.innerText = 'Online — Connected to Host';
+        } else {
+          dot.style.background = 'var(--warning)';
+          text.innerText = 'Offline Mode — Snap & Sync Later Active';
+        }
+      }
+      updateOfflineQueueBadge();
+    }
+    window.addEventListener('online', () => {
+      updateConnectionStatus();
+      syncOfflineCatalog();
+      syncOfflineQueue();
+    });
+    window.addEventListener('offline', updateConnectionStatus);
+
+    // IndexedDB for Offline Caching & Deferred Sync Queue
+    const OFFLINE_DB_NAME = 'nutrivault_offline_db';
+    const OFFLINE_DB_VERSION = 1;
+
+    function openOfflineDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains('offline_foods_cache')) {
+            const store = db.createObjectStore('offline_foods_cache', { keyPath: 'fdc_id' });
+            store.createIndex('barcode', 'barcode', { unique: false });
+          }
+          if (!db.objectStoreNames.contains('offline_sync_queue')) {
+            db.createObjectStore('offline_sync_queue', { keyPath: 'id', autoIncrement: true });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function syncOfflineCatalog() {
+      if (!navigator.onLine) return;
+      try {
+        const res = await fetch('/api/v1/foods/catalog');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.items) return;
+        const db = await openOfflineDB();
+        const tx = db.transaction('offline_foods_cache', 'readwrite');
+        const store = tx.objectStore('offline_foods_cache');
+        for (const item of data.items) {
+          store.put(item);
+        }
+      } catch (e) {
+        console.warn('Failed to sync offline catalog:', e);
+      }
+    }
+
+    async function lookupLocalBarcode(code) {
+      try {
+        const db = await openOfflineDB();
+        return new Promise((resolve) => {
+          const tx = db.transaction('offline_foods_cache', 'readonly');
+          const index = tx.objectStore('offline_foods_cache').index('barcode');
+          const req = index.get(code);
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => resolve(null);
+        });
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function queueOfflineItem(item) {
+      const db = await openOfflineDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('offline_sync_queue', 'readwrite');
+        const store = tx.objectStore('offline_sync_queue');
+        const req = store.add(item);
+        req.onsuccess = () => {
+          updateOfflineQueueBadge();
+          resolve(req.result);
+        };
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function updateOfflineQueueBadge() {
+      try {
+        const db = await openOfflineDB();
+        const tx = db.transaction('offline_sync_queue', 'readonly');
+        const countReq = tx.objectStore('offline_sync_queue').count();
+        countReq.onsuccess = () => {
+          const badge = document.getElementById('offline-queue-badge');
+          if (badge) badge.innerText = `Pending Sync: ${countReq.result}`;
+        };
+      } catch (e) {
+        // Ignore
+      }
+    }
+
     // Initialization
     window.addEventListener('DOMContentLoaded', async () => {
+      updateConnectionStatus();
+      await openOfflineDB();
+      syncOfflineCatalog();
+      updateOfflineQueueBadge();
       await loadHardware();
       await loadProfiles();
     });
@@ -955,6 +1239,25 @@ def GET_PWA_HTML() -> str:
       const commitStatus = document.getElementById('commit-status');
       commitStatus.innerText = 'Committing atomically to SQLite ledger...';
 
+      if (!navigator.onLine) {
+        const queuedMeal = {
+          type: 'meal',
+          dish_name: dishName,
+          ingredients: state.draftIngredients,
+          allocations: allocations.map(a => ({
+            ...a,
+            logged_at: new Date().toISOString()
+          }))
+        };
+        await queueOfflineItem(queuedMeal);
+        commitStatus.innerHTML =
+          `<span style="color:var(--warning); font-weight:600;">` +
+          `Saved "${escapeHtml(dishName)}" to Offline Queue (Snap & Sync Later active)!</span>`;
+        state.draftIngredients = [];
+        renderDraftTable();
+        return;
+      }
+
       try {
         const payload = {
           dish_name: dishName,
@@ -980,6 +1283,316 @@ def GET_PWA_HTML() -> str:
       } catch (e) {
         commitStatus.innerHTML =
           `<span style="color:var(--danger);">${escapeHtml(e.message)}</span>`;
+      }
+    }
+
+    // Offline Batch Syncing
+    async function syncOfflineQueue() {
+      const btn = document.getElementById('sync-queue-btn');
+      btn.innerText = 'Syncing...';
+      try {
+        const db = await openOfflineDB();
+        const tx = db.transaction('offline_sync_queue', 'readonly');
+        const store = tx.objectStore('offline_sync_queue');
+        const req = store.getAll();
+        req.onsuccess = async () => {
+          const items = req.result;
+          if (!items || items.length === 0) {
+            btn.innerText = 'Sync Now 🔄';
+            alert('Offline queue is empty.');
+            return;
+          }
+
+          const queuedMeals = [];
+          const queuedBarcodes = [];
+          for (const it of items) {
+            if (it.type === 'meal') {
+              queuedMeals.push({
+                dish_name: it.dish_name,
+                ingredients: it.ingredients,
+                allocations: it.allocations
+              });
+            } else if (it.type === 'barcode') {
+              queuedBarcodes.push({
+                barcode: it.barcode,
+                grams: it.grams,
+                dish_name: it.dish_name,
+                allocations: it.allocations
+              });
+            }
+          }
+
+          const syncRes = await fetch('/api/v1/sync/batch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              queued_meals: queuedMeals,
+              queued_barcodes: queuedBarcodes
+            })
+          });
+          const syncData = await syncRes.json();
+          if (!syncRes.ok) throw new Error(syncData.error || 'Sync failed.');
+
+          const clearTx = db.transaction('offline_sync_queue', 'readwrite');
+          clearTx.objectStore('offline_sync_queue').clear();
+          clearTx.oncomplete = () => {
+            updateOfflineQueueBadge();
+            btn.innerText = 'Sync Now 🔄';
+            alert(`Synced ${syncData.synced_meals_count} meals successfully!`);
+            if (syncData.unresolved_barcodes && syncData.unresolved_barcodes.length > 0) {
+              const unresolved = syncData.unresolved_barcodes[0];
+              openBarcodeModal(unresolved.barcode);
+            }
+            if (state.activeProfile) loadAnalytics(state.activeProfile.id);
+          };
+        };
+      } catch (e) {
+        btn.innerText = 'Sync Now 🔄';
+        alert(`Sync error: ${e.message}`);
+      }
+    }
+
+    // Barcode Lookup & Camera Scanner
+    async function lookupAndAddBarcode() {
+      const input = document.getElementById('manual-barcode-input');
+      const gramsInput = document.getElementById('barcode-grams');
+      const status = document.getElementById('barcode-status');
+      const rawCode = (input.value || '').trim();
+      const grams = parseFloat(gramsInput.value || '100');
+
+      if (!rawCode) {
+        status.innerText = 'Please enter a barcode.';
+        return;
+      }
+      if (isNaN(grams) || grams <= 0) {
+        status.innerText = 'Portion grams must be > 0.';
+        return;
+      }
+
+      status.innerText = 'Looking up barcode...';
+
+      // 1. Tier 1: Check local IndexedDB first (<10ms)
+      const localItem = await lookupLocalBarcode(rawCode);
+      if (localItem) {
+        const factor = grams / 100.0;
+        const scaledMicros = {};
+        for (const [k, v] of Object.entries(localItem.micros_per_100g || {})) {
+          scaledMicros[k] = Math.round(v * factor * 1000) / 1000;
+        }
+        state.draftIngredients.push({
+          item_name: localItem.description,
+          fdc_id: localItem.fdc_id,
+          grams: grams,
+          calories: Math.round(localItem.calories_per_100g * factor * 100) / 100,
+          protein_g: Math.round(localItem.protein_g_per_100g * factor * 100) / 100,
+          carbs_g: Math.round(localItem.carbs_g_per_100g * factor * 100) / 100,
+          fat_g: Math.round(localItem.fat_g_per_100g * factor * 100) / 100,
+          fiber_g: Math.round(localItem.fiber_g_per_100g * factor * 100) / 100,
+          micros: scaledMicros
+        });
+        renderDraftTable();
+        status.innerHTML =
+          `<span style="color:var(--primary);">` +
+          `Found in local cache: ${escapeHtml(localItem.description)}</span>`;
+        input.value = '';
+        return;
+      }
+
+      // 2. Tier 2: Check backend REST API if online
+      if (navigator.onLine) {
+        try {
+          const encCode = encodeURIComponent(rawCode);
+          const res = await fetch(`/api/v1/foods/barcode/${encCode}?grams=${grams}`);
+          if (res.status === 404) {
+            status.innerHTML =
+              `<span style="color:var(--warning);">Unknown barcode. Register below.</span>`;
+            openBarcodeModal(rawCode);
+            return;
+          }
+          const item = await res.json();
+          if (!res.ok) throw new Error(item.error || 'Barcode lookup failed.');
+
+          state.draftIngredients.push({
+            item_name: item.description,
+            fdc_id: item.fdc_id,
+            grams: item.nutrients.grams,
+            calories: item.nutrients.calories,
+            protein_g: item.nutrients.protein_g,
+            carbs_g: item.nutrients.carbs_g,
+            fat_g: item.nutrients.fat_g,
+            fiber_g: item.nutrients.fiber_g,
+            micros: item.nutrients.micronutrients || {}
+          });
+          renderDraftTable();
+          status.innerHTML =
+            `<span style="color:var(--primary);">Added: ${escapeHtml(item.description)}</span>`;
+          input.value = '';
+          return;
+        } catch (e) {
+          status.innerHTML = `<span style="color:var(--danger);">${escapeHtml(e.message)}</span>`;
+          return;
+        }
+      }
+
+      // 3. Deferred offline barcode scan
+      if (confirm(`Barcode ${rawCode} is not in offline cache. Queue for sync when reconnected?`)) {
+        if (!state.activeProfile) return alert('Select active profile first.');
+        await queueOfflineItem({
+          type: 'barcode',
+          barcode: rawCode,
+          grams: grams,
+          dish_name: `Scanned Product (${rawCode})`,
+          allocations: [{
+            profile_id: state.activeProfile.id,
+            fraction: 1.0,
+            meal_type: document.getElementById('meal-type-select').value || 'snack',
+            logged_at: new Date().toISOString()
+          }]
+        });
+        status.innerHTML =
+          `<span style="color:var(--warning);">` +
+          `Queued deferred barcode ${escapeHtml(rawCode)} for later sync.</span>`;
+        input.value = '';
+      }
+    }
+
+    let cameraStream = null;
+    let cameraScanning = false;
+
+    async function toggleCameraScanner() {
+      const video = document.getElementById('barcode-video');
+      const btn = document.getElementById('toggle-camera-btn');
+      const status = document.getElementById('barcode-status');
+
+      if (cameraScanning) {
+        stopCameraScanner();
+        return;
+      }
+
+      if (!('BarcodeDetector' in window)) {
+        status.innerText = 'BarcodeDetector not supported. Please use manual entry.';
+        return;
+      }
+
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }
+        });
+        video.srcObject = cameraStream;
+        video.style.display = 'block';
+        btn.innerText = '🛑 Stop Camera';
+        cameraScanning = true;
+        status.innerText = 'Point camera at grocery barcode...';
+
+        const detector = new window.BarcodeDetector({
+          formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128']
+        });
+
+        const scanLoop = async () => {
+          if (!cameraScanning) return;
+          try {
+            const barcodes = await detector.detect(video);
+            if (barcodes.length > 0) {
+              const detected = barcodes[0].rawValue;
+              stopCameraScanner();
+              document.getElementById('manual-barcode-input').value = detected;
+              await lookupAndAddBarcode();
+              return;
+            }
+          } catch (err) {
+            // Frame detection error, continue loop
+          }
+          requestAnimationFrame(scanLoop);
+        };
+        requestAnimationFrame(scanLoop);
+      } catch (err) {
+        status.innerText = `Camera access error: ${err.message}`;
+        stopCameraScanner();
+      }
+    }
+
+    function stopCameraScanner() {
+      const video = document.getElementById('barcode-video');
+      const btn = document.getElementById('toggle-camera-btn');
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+      }
+      video.style.display = 'none';
+      btn.innerText = '📷 Camera';
+      cameraScanning = false;
+    }
+
+    // Tier 3 Custom Barcode Registration Modal
+    function openBarcodeModal(code) {
+      document.getElementById('custom-bc-code').value = code || '';
+      document.getElementById('custom-bc-desc').value = '';
+      document.getElementById('custom-bc-cals').value = '0';
+      document.getElementById('custom-bc-protein').value = '0';
+      document.getElementById('custom-bc-carbs').value = '0';
+      document.getElementById('custom-bc-fat').value = '0';
+      document.getElementById('custom-bc-fiber').value = '0';
+      document.getElementById('custom-bc-status').innerText = '';
+      document.getElementById('register-barcode-modal').style.display = 'flex';
+    }
+
+    function closeBarcodeModal() {
+      document.getElementById('register-barcode-modal').style.display = 'none';
+    }
+
+    async function submitCustomBarcode() {
+      const code = document.getElementById('custom-bc-code').value;
+      const desc = document.getElementById('custom-bc-desc').value.trim();
+      const cals = parseFloat(document.getElementById('custom-bc-cals').value || '0');
+      const protein = parseFloat(document.getElementById('custom-bc-protein').value || '0');
+      const carbs = parseFloat(document.getElementById('custom-bc-carbs').value || '0');
+      const fat = parseFloat(document.getElementById('custom-bc-fat').value || '0');
+      const fiber = parseFloat(document.getElementById('custom-bc-fiber').value || '0');
+      const status = document.getElementById('custom-bc-status');
+
+      if (!desc) {
+        status.innerText = 'Description cannot be empty.';
+        return;
+      }
+
+      status.innerText = 'Saving barcode...';
+      try {
+        const res = await fetch(`/api/v1/foods/barcode/${encodeURIComponent(code)}`, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            description: desc,
+            calories_per_100g: cals,
+            protein_g_per_100g: protein,
+            carbs_g_per_100g: carbs,
+            fat_g_per_100g: fat,
+            fiber_g_per_100g: fiber
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Registration failed.');
+
+        const db = await openOfflineDB();
+        const tx = db.transaction('offline_foods_cache', 'readwrite');
+        tx.objectStore('offline_foods_cache').put({
+          fdc_id: data.fdc_id,
+          description: data.description,
+          food_category: data.food_category,
+          preparation_state: data.preparation_state,
+          barcode: data.barcode,
+          calories_per_100g: cals,
+          protein_g_per_100g: protein,
+          carbs_g_per_100g: carbs,
+          fat_g_per_100g: fat,
+          fiber_g_per_100g: fiber,
+          micros_per_100g: {}
+        });
+
+        closeBarcodeModal();
+        document.getElementById('manual-barcode-input').value = code;
+        await lookupAndAddBarcode();
+      } catch (e) {
+        status.innerHTML = `<span style="color:var(--danger);">${escapeHtml(e.message)}</span>`;
       }
     }
 

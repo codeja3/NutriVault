@@ -43,7 +43,7 @@ from src.hardware import (
     probe_hardware,
     resolve_model_tier,
 )
-from src.ui import GET_PWA_HTML, GET_PWA_MANIFEST
+from src.ui import GET_PWA_HTML, GET_PWA_MANIFEST, GET_PWA_SERVICE_WORKER
 from src.vision_pipeline import (
     EphemeralImageBuffer,
     ImagePayloadTooLargeError,
@@ -257,6 +257,9 @@ class NutriVaultAPI:
 
             if method == "GET" and route_path == "/manifest.json":
                 return 200, GET_PWA_MANIFEST()
+
+            if method == "GET" and route_path == "/sw.js":
+                return 200, GET_PWA_SERVICE_WORKER()
 
             # 1. GET /api/v1/hardware
             if method == "GET" and route_path == "/api/v1/hardware":
@@ -762,6 +765,8 @@ class NutriVaultHTTPHandler(http.server.BaseHTTPRequestHandler):
             response_content_type = "text/html; charset=utf-8"
         elif method == "GET" and status_code == 200 and clean_path == "/manifest.json":
             response_content_type = "application/manifest+json"
+        elif method == "GET" and status_code == 200 and clean_path == "/sw.js":
+            response_content_type = "application/javascript; charset=utf-8"
         else:
             response_content_type = "application/json"
 

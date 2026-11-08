@@ -260,10 +260,10 @@
   - [x] `GREEN`: Implement Pydantic models (`BarcodeRegisterRequest`, `QueuedBarcodeItemRequest`, `OfflineSyncBatchRequest`) and route handlers (`_handle_get_catalog`, `_handle_get_barcode`, `_handle_put_barcode`, `_handle_sync_batch`) in `src/api.py`.
   - [x] `REFACTOR`: Verify thread-safe locking and clean HTTP error mapping across all new routes.
 
-- [ ] **Task 12.4: Offline-First PWA Service Worker (`GET /sw.js`), IndexedDB Queue & In-Browser Camera Barcode Scanner (`src/ui.py`)**
-  - [ ] `RED`: Author tests in `tests/test_api.py` asserting `GET /sw.js` returns `200 OK` with `application/javascript; charset=utf-8` (and zero external URLs), and `GET /` includes the offline IndexedDB queue (`nutrivault_offline_db`), Service Worker registration, "Snap & Sync Later" offline queue controls, and in-browser `BarcodeDetector` scanner + Tier-3 custom barcode registration UI.
-  - [ ] `GREEN`: Implement `GET_PWA_SERVICE_WORKER()` and update `GET_PWA_HTML()` in `src/ui.py`, and wire `GET /sw.js` in `src/api.py`.
-  - [ ] `REFACTOR`: Ensure strict DOM XSS escaping (`escapeHtml`) and zero external CDN references across `src/ui.py`.
+- [x] **Task 12.4: Offline-First PWA Service Worker (`GET /sw.js`), IndexedDB Queue & In-Browser Camera Barcode Scanner (`src/ui.py`)**
+  - [x] `RED`: Author tests in `tests/test_api.py` asserting `GET /sw.js` returns `200 OK` with `application/javascript; charset=utf-8` (and zero external URLs), and `GET /` includes the offline IndexedDB queue (`nutrivault_offline_db`), Service Worker registration, "Snap & Sync Later" offline queue controls, and in-browser `BarcodeDetector` scanner + Tier-3 custom barcode registration UI.
+  - [x] `GREEN`: Implement `GET_PWA_SERVICE_WORKER()` and update `GET_PWA_HTML()` in `src/ui.py`, and wire `GET /sw.js` in `src/api.py`.
+  - [x] `REFACTOR`: Ensure strict DOM XSS escaping (`escapeHtml`) and zero external CDN references across `src/ui.py`.
 
 - [ ] **Task 12.5: Turnkey One-Stop `docker-compose.yml` with Preconfigured `SmolVLM-500M` Sidecar & Optional P2P Remote Profile**
   - [ ] `RED`: Author tests in `tests/test_env.py` asserting `docker-compose.yml` defines the `nutrivault-vlm` service preconfigured with `SmolVLM-500M-Instruct-Q8_0` and the optional `remote` profile for away-from-home P2P access.

@@ -1183,3 +1183,57 @@ def test_api_sync_batch_endpoint(api_instance):
     assert logs[1][0] == "Scanned Quaker Oats"
     assert logs[1][1] == "snack"
     assert logs[1][2] == "2026-11-08T15:30:00"
+
+
+def test_api_get_service_worker(api_instance):
+    """GET /sw.js returns Service Worker script with caching and zero external CDNs."""
+    import io
+    from unittest.mock import Mock
+
+    from src.api import NutriVaultHTTPHandler
+
+    handler = NutriVaultHTTPHandler.__new__(NutriVaultHTTPHandler)
+    handler.api = api_instance
+    handler.command = "GET"
+    handler.path = "/sw.js"
+    handler.headers = {"Content-Length": "0"}
+    handler.rfile = io.BytesIO()
+    handler.wfile = io.BytesIO()
+    handler.request_version = "HTTP/1.1"
+
+    recorded_headers = {}
+
+    def mock_send_header(name, val):
+        recorded_headers[name] = val
+
+    handler.send_response = Mock()
+    handler.send_header = Mock(side_effect=mock_send_header)
+    handler.end_headers = Mock()
+
+    handler.do_GET()
+    handler.send_response.assert_called_once_with(200)
+    assert recorded_headers.get("Content-Type") == "application/javascript; charset=utf-8"
+
+    sw_code = handler.wfile.getvalue().decode("utf-8")
+    assert "self.addEventListener('install'" in sw_code
+    assert "self.addEventListener('fetch'" in sw_code
+    assert "/api/v1/foods/catalog" in sw_code
+    assert "/api/v1/profiles" in sw_code
+    assert "http://" not in sw_code
+    assert "https://" not in sw_code
+
+
+def test_pwa_offline_and_barcode_scanner_ui(api_instance):
+    """GET / serves offline IndexedDB queues, SW registration, and Barcode scanner UI."""
+    status, html = api_instance.handle_request("GET", "/")
+    assert status == 200
+    assert "navigator.serviceWorker.register('/sw.js')" in html
+    assert "nutrivault_offline_db" in html
+    assert "offline_foods_cache" in html
+    assert "offline_sync_queue" in html
+    assert "manual-barcode-input" in html
+    assert "BarcodeDetector" in html
+    assert "/api/v1/sync/batch" in html
+    assert "/api/v1/foods/barcode/" in html
+    assert "http://" not in html
+    assert "https://" not in html

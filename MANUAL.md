@@ -1,282 +1,139 @@
-# NutriVault User & Operator Manual 📖
+# NutriVault User Guide 🥗📱
 
-Welcome to **NutriVault**, your local-first, privacy-respecting nutrition tracker. This manual explains how to install, configure, operate, and query NutriVault on your home workstation or server.
+Welcome to **NutriVault**, your private, personal, and family nutrition companion. NutriVault helps you and your household track meals, understand nutrition, and scan grocery barcodes—completely private, with zero ads, and zero cloud tracking.
 
 ---
 
 ## Table of Contents
 
-1. [Hardware Requirements & Model Tiers](#1-hardware-requirements--model-tiers)
-2. [Installation & Setup](#2-installation--setup)
-3. [Running the Backend Service](#3-running-the-backend-service)
-4. [Using the Application](#4-using-the-application)
-   - [Managing Household Profiles](#41-managing-household-profiles)
-   - [Setting Nutrition Target Envelopes](#42-setting-nutrition-target-envelopes)
-   - [Logging a Meal via Ephemeral Photo](#43-logging-a-meal-via-ephemeral-photo)
-   - [Batch Cooking & Fractional Family Splitting](#44-batch-cooking--fractional-family-splitting)
-   - [Viewing Rolling Analytics & Fasting Windows](#45-viewing-rolling-analytics--fasting-windows)
-5. [Clinical & Athletic Advisory Guidelines](#5-clinical--athletic-advisory-guidelines)
-6. [Database Backup & Maintenance](#6-database-backup--maintenance)
-7. [REST API Reference Summary](#7-rest-api-reference-summary)
+1. [60-Second Quickstart](#1-60-second-quickstart)
+2. [Installing NutriVault on Your Phone (PWA)](#2-installing-nutrivault-on-your-phone-pwa)
+3. [Managing Household Profiles & Goals](#3-managing-household-profiles--goals)
+4. [Logging Meals at Home](#4-logging-meals-at-home)
+   - [Instant Search (Staple Foods)](#instant-search-staple-foods)
+   - [Meal Photos (Private Camera AI)](#meal-photos-private-camera-ai)
+   - [Family Cooking Splitter (Cook Once, Log for Everyone)](#family-cooking-splitter-cook-once-log-for-everyone)
+5. [3-Tier Grocery Barcode Scanner](#5-3-tier-grocery-barcode-scanner)
+6. ["Snap & Sync Later" (Restaurants & Travel Mode)](#6-snap--sync-later-restaurants--travel-mode)
+7. [7-Day Trends & Intermittent Fasting Windows](#7-7-day-trends--intermittent-fasting-windows)
+8. [Backing Up Your Nutrition Data](#8-backing-up-your-nutrition-data)
 
 ---
 
-## 1. Hardware Requirements & Model Tiers
+## 1. 60-Second Quickstart
 
-NutriVault automatically probes your host compute specs on launch to prevent out-of-memory crashes:
+NutriVault runs right on your home computer or server.
 
-| Tier | Hardware Prerequisites | Allowable Vision Models | Example Hardware |
-| :--- | :--- | :--- | :--- |
-| **`tier_1_cpu`** | CPU-only, $<6\text{ GB}$ dedicated VRAM, or $<16\text{ GB}$ RAM | $\le 4\text{B}$ quantized models | Older PCs, Intel/M1 8GB Macs, budget laptops (SmolVLM, Moondream2) |
-| **`tier_2_mid`** | Dedicated GPU $\ge 6\text{ GB}$ VRAM, or Apple Silicon $\ge 16\text{ GB}$ RAM | $7\text{B}\text{--}9\text{B}$ models (Q4) | RTX 3060/4060, M1/M2/M3 Pro 16GB (Qwen2.5-VL 7B Q4) |
-| **`tier_3_high`** | Dedicated GPU $\ge 16\text{ GB}$ VRAM, or Apple Silicon $\ge 32\text{ GB}$ RAM | $14\text{B}+$ models | RTX 3090/4090, Apple Silicon 32GB+ (Qwen2.5-VL 14B/72B) |
-
----
-
-## 2. Installation & Setup
-
-### Prerequisites
-* **Operating System:** macOS, Linux, or Windows (WSL2 recommended).
-* **Python:** 3.11 or newer.
-* **Package Tool:** `uv` is required.
-
-### Setup Instructions
-
-```bash
-# 1. Clone repository
-git clone https://github.com/codeja3/NutriVault.git
-cd NutriVault
-
-# 2. Create virtual environment
-uv venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# 3. Synchronize project dependencies
-uv sync
-
-# 4. Verify test suite
-uv run pytest
-```
-
----
-
-## 3. Running the Backend Service
-
-### Option A: Turnkey Docker Container (Recommended for Everyday Users)
-Launch the complete web application, pre-seeded USDA database, and persistent SQLite volume with one command:
-
+### Launching NutriVault
+Open your computer terminal and start the turnkey service:
 ```bash
 docker compose up
 ```
 
-Access the app immediately in your browser at `http://localhost:8080`.
-
-### Option B: Local Python Service
-NutriVault exposes a thread-safe local HTTP daemon (`ThreadingHTTPServer`) and REST router on port `8080` by default:
-
-```bash
-# Default: host=0.0.0.0, port=8080, db_path=data/nutrivault.db
-# Automatically populates staple USDA reference foods on startup
-uv run python -m src.api
-
-# Custom positional arguments: [host] [port] [db_path]
-uv run python -m src.api 127.0.0.1 8080 data/nutrivault.db
-
-# Or via environment variables:
-NUTRIVAULT_HOST=0.0.0.0 NUTRIVAULT_PORT=8080 NUTRIVAULT_DB=data/nutrivault.db uv run python -m src.api
+Open your browser and navigate to:
 ```
-
-### Option C: Hardware-Tailored VLM Setup Guide (`--vlm-guide`)
-To view your detected hardware capabilities and the exact `llama-server` command:
-
-```bash
-uv run python -m src.api --vlm-guide
+http://localhost:8080
 ```
+NutriVault will immediately open with its full library of staple foods pre-loaded!
 
-### Option D: Local Vision Inference Engine (`llama-server`)
-If you want to run multimodal vision extraction locally, launch `llama-server` on loopback port `8081`:
+---
 
-```bash
-# Example for Tier 2 mid-spec (e.g. Qwen2.5-VL 7B):
-./llama-server -m ./models/qwen2.5-vl-7b-instruct-q4_k_m.gguf \
-  --mmproj ./models/qwen2.5-vl-7b-mmproj-f16.gguf \
-  --port 8081 --host 127.0.0.1
+## 2. Installing NutriVault on Your Phone (PWA)
+
+You don't need an app store. NutriVault installs directly as a lightweight, lightning-fast app on your home screen:
+
+### On iPhone (Safari)
+1. On your iPhone, connect to your home Wi-Fi and open Safari.
+2. Go to `http://<your-computer-ip>:8080` (or `http://nutrivault.local:8080`).
+3. Tap the **Share** button (the box with an upward arrow at the bottom of the screen).
+4. Scroll down and tap **"Add to Home Screen"**.
+5. Tap **Add**. The NutriVault icon 🥗 will now appear on your phone's home screen.
+
+### On Android (Chrome)
+1. Connect to your home Wi-Fi and open Chrome.
+2. Go to `http://<your-computer-ip>:8080`.
+3. Tap the **three dots** in the top right corner.
+4. Select **"Install app"** or **"Add to Home screen"**.
+
+Once installed, NutriVault opens full-screen like a native app and works offline when you're away from home!
+
+---
+
+## 3. Managing Household Profiles & Goals
+
+NutriVault is designed for individuals and families:
+
+* **Switch Profiles:** Select any family member from the top dropdown.
+* **Add a Profile:** Tap **"+ New"** to add a family member, athlete, or child.
+* **Nutrition Goals:** Set daily targets for Calories, Protein, Carbs, Fat, and Fiber.
+* **Health Safeguards:**
+  * **Athletic Goals:** Automatically calculates baseline targets for endurance, strength, or balanced training.
+  * **Medical Conditions:** NutriVault protects your safety. If a profile is marked with a chronic medical condition, automatic AI targets are locked to ensure you consult your registered dietitian or physician.
+
+---
+
+## 4. Logging Meals at Home
+
+### Instant Search (Staple Foods)
+1. Type what you're eating into the search bar (e.g., `brown rice`, `chicken breast`, `eggs`, `spinach`).
+2. Enter your portion size in grams (default is 100g).
+3. Tap **Search** and then **+ Add** to place it into your current dish draft.
+
+### Meal Photos (Private Camera AI)
+1. Snap a photo of your plate or upload an existing photo.
+2. NutriVault's private vision AI identifies the foods and estimates their weights.
+3. **100% Private:** Photos stay strictly in temporary memory while being analyzed. Your photos are never saved to disk and are completely erased immediately after review.
+
+### Family Cooking Splitter (Cook Once, Log for Everyone)
+Cooking a large shared meal (like a family stew, casserole, or pasta dish)?
+1. Add all the ingredients of the entire recipe to your draft.
+2. Scroll to the **Family Batch Portion Allocator**.
+3. Adjust the sliders for each household member (e.g., Parent A: 40%, Parent B: 35%, Kid: 25%).
+4. Choose your meal type (**Breakfast**, **Lunch**, **Dinner**, or **Snack**).
+5. Tap **"Commit Meal to Ledger"**. NutriVault automatically calculates and logs everyone's exact portion in one tap!
+
+---
+
+## 5. 3-Tier Grocery Barcode Scanner
+
+Scan groceries effortlessly in your kitchen or at the store:
+
+* **Tier 1 (Instant Local Lookups):** Scans against your local catalog on your phone in under 10 milliseconds—even with zero Wi-Fi or cellular signal!
+* **Tier 2 (Home Server Lookups):** Queries your home database for any item previously registered in your household.
+* **Tier 3 (1-Tap Custom Barcode Registration):** Scanned a brand new packaged food? NutriVault immediately prompts you with a quick form: enter the calories, protein, carbs, and fat from the nutrition label on the box. Once saved, it's permanently stored and recognized forever across all your devices!
+
+### How to Scan
+* **Camera Scanning:** Tap **"📷 Camera"**, point your phone camera at the barcode, and NutriVault will scan it automatically.
+* **Manual Entry:** If your camera is busy, type the barcode number (e.g., `0030000010204`) into the box and tap **Lookup**.
+
+---
+
+## 6. "Snap & Sync Later" (Restaurants & Travel Mode)
+
+What happens when you're eating at a restaurant or travelling away from your home computer?
+
+NutriVault features **Snap & Sync Later**:
+1. When you leave home, NutriVault automatically switches to **Offline Mode**.
+2. Search staple foods, scan grocery barcodes, and log your meals as usual.
+3. Your meals are saved safely in your phone's local offline queue, preserving the exact date and time you ate.
+4. When you reconnect to your home Wi-Fi, NutriVault will automatically sync your meals to your permanent diary! You can also tap **"Sync Now 🔄"** at any time.
+
+---
+
+## 7. 7-Day Trends & Intermittent Fasting Windows
+
+NutriVault tracks your health over time:
+
+* **Rolling 7-Day Averages:** Shows your smoothed daily calorie and macronutrient intake, filtering out day-to-day noise.
+* **Target Adherence:** Highlights whether you are on track with your goals with clear positive and negative indicators.
+* **Intermittent Fasting & Eating Windows:** Automatically computes when you ate your first meal, your last meal, how many hours your eating window lasted, and your overnight fast between consecutive days.
+
+---
+
+## 8. Backing Up Your Nutrition Data
+
+All your profiles, meal journals, and custom foods are stored in a single file on your computer:
 ```
-
-NutriVault automatically points to `http://127.0.0.1:8081/v1/chat/completions` to extract food entities and portions (with strict loopback SSRF validation).
-
----
-
-## 4. Using the Application
-
-### 4.0 Built-In Web Application (Zero-Build PWA)
-Point your browser to `http://localhost:8080` to access the responsive web interface:
-* **Zero External Dependencies:** 100% offline, zero CDN scripts, stylesheets, or telemetry.
-* **Instant USDA Food Search:** Search foods immediately by keyword (e.g., `"brown rice"`, `"chicken breast"`) with real-time gram scaling without running a VLM.
-* **Interactive Meal Builder:** Add items, adjust portion weights, and inspect calories, macros, and micronutrients.
-* **Family Batch Cooking Splitter:** Allocate portion fractions ($\le 100\%$) across multiple household members with live sum validation.
-* **Rolling Analytics Dashboard:** View 7-day EMA averages, target adherence deltas, daily eating windows, and overnight fasting intervals.
-
-### 4.1 Managing Household Profiles
-
-NutriVault is designed for households with diverse nutritional demands:
-
-* **Standard Profile:** Everyday balanced wellness and maintenance.
-* **Athletic Profile:** Marathon runners, lifters, cyclists with body composition goals.
-* **Chronic Condition Profile:** Crohn's disease, Lupus, CKD, or metabolic restrictions where diet directly affects medical outcomes.
-
-#### Creating a Profile (via API / Web Interface)
-```bash
-curl -X POST http://localhost:8080/api/v1/profiles \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Alex",
-    "profile_type": "athletic",
-    "birth_date": "1992-06-15",
-    "condition_notes": "Marathon training"
-  }'
+data/nutrivault.db
 ```
-
----
-
-### 4.2 Setting Nutrition Target Envelopes
-
-Set active daily targets for calories, macros, and micronutrients:
-
-```bash
-curl -X PUT http://localhost:8080/api/v1/profiles/{profile_id}/targets \
-  -H "Content-Type: application/json" \
-  -d '{
-    "calories_target": 2400,
-    "protein_g_target": 160.0,
-    "carbs_g_target": 280.0,
-    "fat_g_target": 70.0,
-    "fiber_g_target": 35.0,
-    "micronutrients": {"iron_mg": 18.0, "calcium_mg": 1000.0},
-    "is_ai_generated": false,
-    "acknowledged": false
-  }'
-```
-
-*Note: When applying AI-generated athletic targets (`"is_ai_generated": true`), `"acknowledged": true` is required (HTTP 400 if omitted). Profiles with `profile_type == "chronic_condition"` reject `"is_ai_generated": true` with HTTP 403 (`ERR_CLINICAL_AI_RESTRICTED`). Previous target envelopes are preserved as inactive history (`is_active = 0`).*
-
----
-
-### 4.3 Logging a Meal via Ephemeral Photo
-
-1. Snap or upload a photo of your meal via `multipart/form-data`:
-   ```bash
-   curl -X POST http://localhost:8080/api/v1/meals/parse-image \
-     -F "image=@meal.jpg"
-   ```
-2. Payloads exceeding **15 MB** are rejected at the HTTP header boundary with HTTP 413 (`ERR_IMAGE_PAYLOAD_TOO_LARGE`) before allocating memory.
-3. The image is extracted in mutable `bytearray` buffers and held strictly in **volatile RAM (`io.BytesIO`)** with **zero disk writes**.
-4. The local VLM (`127.0.0.1:8081`) extracts distinct food items and estimates portion grams (`> 0.0`):
-   ```json
-   [
-     {"item_name": "steamed brown rice", "estimated_grams": 200.0},
-     {"item_name": "grilled chicken breast", "estimated_grams": 150.0}
-   ]
-   ```
-5. NutriVault matches candidate food items to the **USDA FoodData Central** reference table and calculates exact linear nutrients (macros rounded to 2 decimal places, micronutrients to 3 decimal places).
-6. Regardless of success or error, the underlying image memory buffers are **overwritten in-place with `0x00` bytes and purged immediately**.
-
----
-
-### 4.4 Batch Cooking & Fractional Family Splitting
-
-One of NutriVault's core workflows is handling **cook-once shared dishes**:
-
-1. **Cook:** The household cook prepares a large batch of pasta or casserole.
-2. **Allocate & Commit Atomically:** Distribute fractional portions ($0.0 < \sum \text{fraction} \le 1.0$) across household profiles in a single atomic transaction:
-   ```bash
-   curl -X POST http://localhost:8080/api/v1/meals/commit \
-     -H "Content-Type: application/json" \
-     -d '{
-       "dish_name": "Family Chicken & Rice Casserole",
-       "ingredients": [
-         {
-           "item_name": "cooked brown rice",
-           "fdc_id": 1001,
-           "grams": 600.0,
-           "calories": 672.0,
-           "protein_g": 13.8,
-           "carbs_g": 141.0,
-           "fat_g": 4.8,
-           "fiber_g": 9.6,
-           "micros": {"potassium_mg": 474.0}
-         }
-       ],
-       "allocations": [
-         {"profile_id": "{parent_a_id}", "fraction": 0.4, "meal_type": "dinner"},
-         {"profile_id": "{parent_b_id}", "fraction": 0.4, "meal_type": "dinner"},
-         {"profile_id": "{child_id}", "fraction": 0.2, "meal_type": "dinner"}
-       ]
-     }'
-   ```
-3. **Leftover Support:** Total portions can sum to less than `1.0` (e.g., `0.7` consumed today, leaving `0.3` for leftovers). Any invalid sum ($\le 0.0$ or $> 1.0$) or constraint error rolls back both `dishes` and `meal_logs` atomically (`ERR_INVALID_PORTION_SUM`).
-
----
-
-### 4.5 Viewing Rolling Analytics & Fasting Windows
-
-NutriVault provides rolling analytics and chrononutrition metrics without sending data to third parties:
-
-```bash
-curl "http://localhost:8080/api/v1/analytics/rolling?profile_id={profile_id}&days=7"
-```
-
-**Response includes:**
-* **7-Day Rolling Exponential Moving Averages (EMA):** Smooths daily caloric and macronutrient fluctuations.
-* **Target Adherence Deltas:** Exact differences between EMA and your active target envelope ($\Delta = \text{EMA} - \text{Target}$).
-* **Daily Feeding Windows:** Time elapsed from first meal to last meal each day.
-* **Overnight Fasting Intervals:** Exact fasting hours between yesterday's dinner and today's breakfast.
-
----
-
-## 5. Clinical & Athletic Advisory Guidelines
-
-NutriVault incorporates strict ethical and safety guardrails:
-
-### Clinical Hard Lock (`ERR_CLINICAL_AI_RESTRICTED`)
-* Any profile tagged with `profile_type == 'chronic_condition'` **strictly blocks** automated AI goal generation.
-* The system enforces this mandatory clinical notice:
-  > *"Nutritional goals for chronic conditions must be established in consultation with a qualified physician or registered dietitian. NutriVault does not provide clinical diagnoses or therapeutic prescriptions."*
-
-### Athletic Advisory Wire
-* Fitness and body-composition targets generated via local AI prompts must bundle the following advisory wire:
-  > *"Local model fitness baselines are heuristic estimates. For rigorous training regimens or metabolic adjustments, consult a certified fitness trainer or cross-reference using privacy-preserving frontier endpoints (e.g., search.brave.com/ask)."*
-* Requires explicit user acknowledgment before applying targets.
-
----
-
-## 6. Database Backup & Maintenance
-
-NutriVault stores all user data in standard, unencrypted SQLite database files with WAL mode enabled:
-
-* **`data/nutrivault.db`:** User profiles, target envelopes, shared dishes, and meal journals.
-* **`data/usda_reference.db`:** Static read-only USDA reference table.
-
-### Creating a Safe Backup
-To create a live, consistent snapshot while the daemon is running:
-```bash
-sqlite3 data/nutrivault.db ".backup data/nutrivault_backup.db"
-```
-
----
-
-## 7. REST API Reference Summary
-
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/` | Serves the zero-build Progressive Web App (PWA) HTML5 interface. |
-| `GET` | `/manifest.json` | Serves the PWA web app manifest. |
-| `GET` | `/api/v1/hardware` | Returns detected compute specs, tier ceiling, and recommended models. |
-| `GET` | `/api/v1/profiles` | Lists all active household profiles. |
-| `POST` | `/api/v1/profiles` | Creates a new profile. |
-| `PUT` | `/api/v1/profiles/{id}/targets` | Sets active target envelope (atomically deactivating old). |
-| `POST` | `/api/v1/advisory/fitness-targets` | Generates athletic targets with advisory wire (or 403 on clinical). |
-| `GET` | `/api/v1/foods/search` | Instant USDA food search with real-time linear gram scaling. |
-| `POST` | `/api/v1/meals/parse-image` | Multipart in-memory VLM image parsing and USDA grounding. |
-| `POST` | `/api/v1/meals/commit` | Persists shared dish and logs fractional portions to family members. |
-| `GET` | `/api/v1/analytics/rolling` | Computes 7-day EMA, target deltas, and feeding/fasting intervals. |
+To back up your entire history, simply copy `data/nutrivault.db` to a backup drive or cloud folder. To restore, place it back into `data/`. That's it!

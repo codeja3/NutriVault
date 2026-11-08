@@ -80,4 +80,11 @@
     * Implemented zero-build Progressive Web App (`src/ui.py`) serving responsive HTML5/CSS3/ES6 interface at `GET /` and web manifest at `GET /manifest.json` with zero external CDN dependencies.
     * Implemented turnkey containerization (`Dockerfile`, `docker-compose.yml`, `.dockerignore`) with non-root user and persistent `/app/data` volume.
     * Added `--vlm-guide` CLI flag in `src/api.py` for automated hardware probing and `llama-server` guidance.
-* **Current Status:** 100% contract requirements fulfilled, `PRD.md` v1.2.0 and `SPEC.md` v1.2.0 locked, Phase 11 complete, and verified across all 103 offline unit tests with clean Ruff lint and format.
+* **Current Status:** 100% contract requirements fulfilled, `PRD.md` v1.3.0 and `SPEC.md` v1.3.0 locked, Phase 12 complete, and verified across all 120 offline unit tests with clean Ruff lint and format.
+  * Task 12.1–12.6: Completed Phase 12 (One-Stop-Shop Predefined VLM Catalog, Offline-First "Snap & Sync Later" PWA & 3-Tier Barcode Scanner):
+    * **Task 12.1:** Implemented `PredefinedVLMModel` catalog (`SmolVLM-500M-Instruct-Q8_0` for CPU, `Qwen2.5-VL-3B-Instruct-Q4_K_M` for mid-tier, `Qwen2.5-VL-7B-Instruct-Q4_K_M` for high-tier), `build_managed_vlm_command()`, and exposed in `GET /api/v1/hardware`.
+    * **Task 12.2:** Added `barcode` column and index to `usda_foods`, auto-migrated legacy databases in `init_db()`, seeded staple barcodes in `DEFAULT_USDA_FOODS`, and implemented `normalize_barcode()`, `lookup_barcode()`, `register_barcode()`, and `export_offline_catalog()` in `src/grounding.py`.
+    * **Task 12.3:** Implemented `GET /api/v1/foods/catalog`, `GET /api/v1/foods/barcode/{code}`, `PUT /api/v1/foods/barcode/{code}`, and `POST /api/v1/sync/batch` in `src/api.py` with `BarcodeNotFoundError` (HTTP 404), portion scaling, and atomic preservation of client `logged_at` timestamps.
+    * **Task 12.4:** Implemented offline-first PWA Service Worker (`GET /sw.js`), IndexedDB (`nutrivault_offline_db` caching `offline_foods_cache` and `offline_sync_queue`), live connection banner, camera barcode scanner (`window.BarcodeDetector`), and 1-tap custom barcode modal in `src/ui.py`.
+    * **Task 12.5:** Preconfigured turnkey `SmolVLM-500M` sidecar (`ghcr.io/ggerganov/llama.cpp:server`) and optional P2P remote profile in `docker-compose.yml`.
+    * **Task 12.6:** Conducted role-separated documentation overhaul: created comprehensive `DEV_MANUAL.md` for developers, rewritten `MANUAL.md` as a 100% jargon-free user guide, and updated `README.md` and `MEMORY.md`.

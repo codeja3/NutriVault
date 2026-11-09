@@ -19,12 +19,13 @@ You do **not** need any programming or command-line experience to use NutriVault
 6. ["Snap & Sync Later" (Restaurants & Travel Away from Your Computer)](#6-snap--sync-later-restaurants--travel-away-from-your-computer)
 7. [7-Day Trends & Intermittent Fasting Windows](#7-7-day-trends--intermittent-fasting-windows)
 8. [Backing Up Your Nutrition History](#8-backing-up-your-nutrition-history)
+9. [Uninstalling NutriVault](#9-uninstalling-nutrivault)
 
 ---
 
 ## 1. Step-by-Step: Download & Double-Click Start
 
-NutriVault runs right on your home Mac or Windows computer. Follow these 3 simple steps:
+NutriVault runs right on your home Mac, Windows, or Linux computer. Follow these 3 simple steps:
 
 ### Step 1: Download the NutriVault Folder (1 Click)
 1. Click this direct link to download NutriVault to your computer:  
@@ -33,7 +34,8 @@ NutriVault runs right on your home Mac or Windows computer. Follow these 3 simpl
 3. Unzip the downloaded `NutriVault-main.zip` file:
    * **On Mac:** Double-click `NutriVault-main.zip` to unpack the **`NutriVault-main`** folder.
    * **On Windows:** Right-click `NutriVault-main.zip`, click **"Extract All..."**, and click **Extract**.
-4. *(Recommended)* Drag the unpacked **`NutriVault-main`** folder to your **Desktop** or **Applications / Documents** folder so it's always easy to find.
+   * **On Linux:** Right-click `NutriVault-main.zip` in your file manager and select **"Extract Here"** (or double-click it and click **Extract**).
+4. *(Recommended)* Drag the unpacked **`NutriVault-main`** folder to your **Desktop**, **Home**, or **Documents** folder so it's always easy to find.
 
 ### Step 2: Double-Click to Launch NutriVault
 Open the **`NutriVault-main`** folder you just unpacked:
@@ -44,6 +46,10 @@ Open the **`NutriVault-main`** folder you just unpacked:
 * **On Windows:**
   1. Look for the file named **`Start_NutriVault.bat`** and **double-click** it.
   2. *First-Time Windows Tip:* If Windows SmartScreen shows a blue *"Windows protected your PC"* popup, click **"More info"** and then click **"Run anyway"**.
+* **On Linux (Ubuntu, Linux Mint, Fedora, Debian, etc.):**
+  1. Look for the file named **`Start_NutriVault.sh`**.
+  2. **Right-click** **`Start_NutriVault.sh`** and select **"Run as a Program"** (or double-click it and choose **"Run in Terminal"** / **"Execute"**).
+  3. *First-Time Linux Tip:* If your file manager opens `Start_NutriVault.sh` in a text editor instead of running it, right-click `Start_NutriVault.sh` $\rightarrow$ **Properties** $\rightarrow$ **Permissions**, check **"Allow executing file as program"**, close Properties, and then right-click $\rightarrow$ **"Run as a Program"**.
 
 ### Step 3: Your Web Browser Opens Automatically!
 A small status window will appear to start NutriVault (and automatically finish a one-time setup if it's your very first launch), and your default web browser will automatically open to:
@@ -164,3 +170,26 @@ data/nutrivault.db
 ```
 * **To back up your data:** Copy the `nutrivault.db` file from the `data` folder onto a USB drive or your personal backup folder.
 * **To restore your data on a new computer:** Place your `nutrivault.db` file back into the `data` folder and double-click `Start_NutriVault`!
+
+---
+
+## 9. Uninstalling NutriVault
+
+Because NutriVault is self-contained inside its folder and does not scatter background services across your operating system, uninstalling it is quick and clean:
+
+### 1. Uninstall from Your Computer (Mac, Windows, or Linux)
+1. **Stop NutriVault:** If NutriVault is currently running, close its background launcher window.
+2. **(Optional) Save Your Data Backup:** If you want to keep your meal history for the future, copy `data/nutrivault.db` to another folder before deleting.
+3. **Delete the Folder:**
+   * **On Mac:** Drag the **`NutriVault-main`** folder to the **Trash**, then right-click the Trash icon and click **Empty Trash**.
+   * **On Windows:** Right-click the **`NutriVault-main`** folder, click **Delete**, and empty your **Recycle Bin**.
+   * **On Linux:** Move the **`NutriVault-main`** folder to the **Trash** (or press `Shift + Delete` to delete it permanently).
+
+### 2. Remove the App Icon from Your Phone
+* **On iPhone:** Touch and hold the **NutriVault 🥗** icon on your Home Screen, tap **Remove App**, and tap **Delete**.
+* **On Android:** Touch and hold the **NutriVault 🥗** icon on your Home Screen and drag it to **Uninstall** (or tap **App info $\rightarrow$ Uninstall**).
+
+### 3. Optional Deep Cleanup (If You Used Docker or the First-Time Python Helper)
+* **If you used Docker Desktop:** Open **Docker Desktop**, go to the **Containers** and **Images** tabs, and click the trash can icon next to `nutrivault` and `nutrivault-vlm`.
+* **If NutriVault installed the lightweight Python helper (`uv`) during first launch:** You can delete the `.local/bin/uv` file in your user home folder (`~/.local/bin/uv` on Mac/Linux, or `C:\Users\<YourName>\.local\bin\uv.exe` on Windows).
+

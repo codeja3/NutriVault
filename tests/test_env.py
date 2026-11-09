@@ -81,12 +81,22 @@ def test_double_click_desktop_launchers_exist():
     assert 'cd /d "%~dp0"' in win_text
     assert "--open-browser" in win_text or "http://localhost:8080" in win_text
 
+    linux_launcher = repo_root / "Start_NutriVault.sh"
+    assert linux_launcher.exists(), "Start_NutriVault.sh must exist at repo root"
+    assert os.access(linux_launcher, os.X_OK), "Start_NutriVault.sh must be executable"
+    linux_text = linux_launcher.read_text()
+    assert 'cd "$(dirname "$0")"' in linux_text
+    assert "--open-browser" in linux_text or "http://localhost:8080" in linux_text
+
     manual_file = repo_root / "MANUAL.md"
     assert manual_file.exists()
     manual_text = manual_file.read_text()
     assert "https://github.com/codeja3/NutriVault/archive/refs/heads/main.zip" in manual_text
     assert "Start_NutriVault.command" in manual_text
     assert "Start_NutriVault.bat" in manual_text
+    assert "Start_NutriVault.sh" in manual_text
+    assert "On Linux" in manual_text
+    assert "## 9. Uninstalling NutriVault" in manual_text
     assert "Phone Wi-Fi Link" in manual_text
     assert "git clone" not in manual_text
     assert "uv venv" not in manual_text

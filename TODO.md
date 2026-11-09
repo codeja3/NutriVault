@@ -284,13 +284,13 @@
   - [x] `GREEN`: Implement `detect_local_lan_ip()` in `src/hardware.py`, add `local_lan_url` and `--open-browser` in `src/api.py`, and add the `#phone-wifi-link` badge in `src/ui.py`.
   - [x] `REFACTOR`: Verify offline hermetic execution with mocked sockets/browser calls.
 
-- [x] **Task 13.2: Native Double-Click Desktop Launchers (`Start_NutriVault.command` for macOS & `Start_NutriVault.bat` for Windows)**
-  - [x] `RED`: Author tests in `tests/test_env.py` asserting `Start_NutriVault.command` (with executable bit `0o755`) and `Start_NutriVault.bat` exist in repository root and invoke NutriVault with automatic working-directory resolution and browser opening.
-  - [x] `GREEN`: Create `Start_NutriVault.command` (`chmod +x`) and `Start_NutriVault.bat` in repository root.
-  - [x] `REFACTOR`: Ensure scripts work whether the user has Docker Desktop or standalone Python/`uv` (and automatically install portable `uv` if missing).
+- [x] **Task 13.2: Native Double-Click Desktop Launchers (`Start_NutriVault.command` for macOS, `Start_NutriVault.bat` for Windows & `Start_NutriVault.sh` for Linux)**
+  - [x] `RED`: Author tests in `tests/test_env.py` asserting `Start_NutriVault.command` (macOS), `Start_NutriVault.bat` (Windows), and `Start_NutriVault.sh` (Linux) exist in repository root with executable permissions and invoke NutriVault with automatic working-directory resolution and browser opening.
+  - [x] `GREEN`: Create `Start_NutriVault.command` (`chmod +x`), `Start_NutriVault.bat`, and `Start_NutriVault.sh` (`chmod +x`) in repository root.
+  - [x] `REFACTOR`: Ensure scripts work whether the user has Docker or standalone Python/`uv` (and automatically install portable `uv` if missing).
 
-- [x] **Task 13.3: True Zero-Terminal Step-by-Step User Manual (`MANUAL.md` & `README.md` Overhaul)**
-  - [x] `RED`: Audit `MANUAL.md` and `README.md` to ensure zero terminal assumptions for average users, adding the direct 1-click ZIP download URL, step-by-step unzipping instructions, Mac/Windows double-click instructions (including macOS Gatekeeper Right-Click -> Open tip), and how to read the `📱 Phone Wi-Fi Link` badge on screen.
+- [x] **Task 13.3: True Zero-Terminal Step-by-Step User Manual (`MANUAL.md` & `README.md` Overhaul + Linux & Uninstall Guides)**
+  - [x] `RED`: Audit `MANUAL.md` and `README.md` to ensure zero terminal assumptions for average users, adding the direct 1-click ZIP download URL, step-by-step unzipping instructions, Mac/Windows/Linux launch instructions, how to read the `📱 Phone Wi-Fi Link` badge on screen, and Section 9 (`Uninstalling NutriVault`).
   - [x] `GREEN`: Rewrite `MANUAL.md` and update `README.md`, `DEV_MANUAL.md`, and `MEMORY.md`.
   - [x] `REFACTOR`: Run full offline `uv run pytest` and `uv run ruff check .` / `uv run ruff format --check .`.
 

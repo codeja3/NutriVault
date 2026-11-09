@@ -7,7 +7,7 @@
 
 ## 🌟 Key Highlights
 
-* **True Double-Click Start (Zero Terminal Needed):** Download the ZIP, unzip it, and double-click **`Start_NutriVault.command`** (Mac) or **`Start_NutriVault.bat`** (Windows). Your browser opens automatically to `http://localhost:8080` and displays your exact **`📱 Phone Wi-Fi Link`** right at the top of the screen.
+* **True Double-Click Start (Zero Terminal Needed):** Download the ZIP, unzip it, and launch **`Start_NutriVault.command`** (Mac), **`Start_NutriVault.bat`** (Windows), or **`Start_NutriVault.sh`** (Linux). Your browser opens automatically to `http://localhost:8080` and displays your exact **`📱 Phone Wi-Fi Link`** right at the top of the screen.
 * **100% Offline & Private:** Zero cloud SDKs, zero ads, zero telemetry. Operates locally on your home computer, private network, or completely offline on your mobile device.
 * **Turnkey Mobile PWA ("Snap & Sync Later"):** Installs in seconds on iPhone Safari and Android Chrome via *"Add to Home Screen"*. Log meals, snap restaurant photos, and scan barcodes while travelling away from your computer; your phone queues items locally with their original timestamps and automatically syncs when reconnected.
 * **3-Tier Grocery Barcode Scanner:**
@@ -31,6 +31,7 @@
 2. **Double-Click to Start:**
    * **Mac:** Double-click **`Start_NutriVault.command`** inside the unzipped folder.
    * **Windows:** Double-click **`Start_NutriVault.bat`** inside the unzipped folder.
+   * **Linux:** Right-click **`Start_NutriVault.sh`** and select **"Run as a Program"** (or double-click it).
 3. **Start Logging:** Your web browser opens **`http://localhost:8080`** automatically, and displays your **`📱 Phone Wi-Fi Link`** at the top of the screen so you can add NutriVault to your phone's home screen!
 
 *(Prefer Docker? Simply run `docker compose up` inside the folder to launch NutriVault + the preconfigured `SmolVLM-500M` Camera AI sidecar simultaneously.)*
